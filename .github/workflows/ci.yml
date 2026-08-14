@@ -24,7 +24,7 @@ jobs:
         with:
           repository: NousResearch/hermes-agent
           ref: 56a41715dc3b8bf6f50a740ff9416c4036ef4259
-          path: ${{ runner.temp }}/hermes-agent
+          path: .ci/hermes-agent
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,22 +36,22 @@ jobs:
 
       - name: Install plugin into bundled Hermes memory path
         run: |
-          mkdir -p "${{ runner.temp }}/hermes-agent/plugins/memory/hyperspacedb"
-          rsync -a --exclude .git --exclude .github ./ "${{ runner.temp }}/hermes-agent/plugins/memory/hyperspacedb/"
+          mkdir -p .ci/hermes-agent/plugins/memory/hyperspacedb
+          rsync -a --exclude .git --exclude .github --exclude .ci ./ .ci/hermes-agent/plugins/memory/hyperspacedb/
 
       - name: Unit and contract tests
         env:
-          PYTHONPATH: ${{ runner.temp }}/hermes-agent
+          PYTHONPATH: ${{ github.workspace }}/.ci/hermes-agent
           PYTHONDONTWRITEBYTECODE: "1"
         run: python -m pytest -q tests --ignore=tests/run_test_collection_e2e.py -p no:cacheprovider
 
       - name: User-install discovery smoke
         env:
-          PYTHONPATH: ${{ runner.temp }}/hermes-agent
+          PYTHONPATH: ${{ github.workspace }}/.ci/hermes-agent
           HERMES_HOME: ${{ runner.temp }}/hermes-home
         run: |
           mkdir -p "$HERMES_HOME/plugins/hyperspacedb"
-          rsync -a --exclude .git --exclude .github ./ "$HERMES_HOME/plugins/hyperspacedb/"
+          rsync -a --exclude .git --exclude .github --exclude .ci ./ "$HERMES_HOME/plugins/hyperspacedb/"
           python - <<'PY'
           import os
           from pathlib import Path

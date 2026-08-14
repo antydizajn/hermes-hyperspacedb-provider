@@ -16,7 +16,7 @@ _EXPORT_IGNORED_NAMES = {
     "AUDIT.md", "AUDIT-CLEAN-20260813.md", "LUNA-AUDIT-REPORT.md",
     "PROMPT_ITERATIONS.md",
 }
-_NON_SHIPPED_DIRS = {"state", "_deferred_events", "__pycache__"}
+_NON_SHIPPED_DIRS = {"state", "_deferred_events", "__pycache__", ".ci", ".git"}
 
 
 def _git_repository_root() -> "Path | None":
