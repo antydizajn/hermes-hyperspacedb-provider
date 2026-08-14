@@ -63,6 +63,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install discovery deps
+        run: python -m pip install --upgrade pip && pip install pyyaml
+
       - name: User-install discovery smoke
         env:
           PYTHONPATH: ${{ github.workspace }}/.ci/hermes-agent
@@ -107,7 +110,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install real SDK
-        run: python -m pip install --upgrade pip && pip install pytest pyyaml "${{ matrix.constraint }}"
+        run: python -m pip install --upgrade pip && pip install pytest pyyaml cryptography "${{ matrix.constraint }}"
 
       - name: Prove import is not the repo stub
         env:
