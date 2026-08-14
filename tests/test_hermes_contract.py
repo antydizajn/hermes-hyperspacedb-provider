@@ -126,6 +126,46 @@ def test_metric_fallback_uses_list_collections(provider, fake_client):
     assert provider._collection_contract_verified is True
 
 
+
+def test_schema_none_uses_stored_point_when_list_collections_times_out(provider, fake_client):
+    fake_client.stats_value = {"schema": None, "count": 3}
+    fake_client.list_collections = lambda: (_ for _ in ()).throw(TimeoutError("list_collections deadline"))
+    fake_client.points[7] = {
+        "id": 7,
+        "vector": [1.5] + [0.0] * 128,
+        "metadata": {},
+        "payload": b"",
+    }
+    provider._expected_dimension = 129
+    provider.initialize("schema-none-stored")
+    assert provider._collection_contract_verified is True
+    assert provider._observed_dimension == 129
+    assert provider._configured_metric == "lorentz"
+
+
+def test_schema_none_stays_unverified_without_stored_vectors(provider, fake_client):
+    fake_client.stats_value = {"schema": None, "count": 0}
+    fake_client.list_collections = lambda: (_ for _ in ()).throw(TimeoutError("list_collections deadline"))
+    fake_client.points.clear()
+    provider._expected_dimension = 129
+    provider.initialize("schema-none-empty")
+    assert provider._collection_contract_verified is False
+
+
+def test_schema_none_rejects_stored_dimension_mismatch(provider, fake_client):
+    fake_client.stats_value = {"schema": None, "count": 1}
+    fake_client.list_collections = lambda: (_ for _ in ()).throw(TimeoutError("list_collections deadline"))
+    fake_client.points[8] = {
+        "id": 8,
+        "vector": [0.1] * 384,
+        "metadata": {},
+        "payload": b"",
+    }
+    provider._expected_dimension = 129
+    provider.initialize("schema-none-dim-mismatch")
+    assert provider._collection_contract_verified is False
+
+
 def test_schema_component_contract_verifies_live_sdk_shape(provider, fake_client):
     schema = {
         "components": [{

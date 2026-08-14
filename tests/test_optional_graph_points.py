@@ -159,3 +159,28 @@ def test_initialize_revokes_prior_session_handles(provider, fake_client):
     assert result["ok"] is False
     assert result["error"]["code"] == "CAPABILITY_FORBIDDEN"
     assert fake_client.calls == before
+
+
+def test_graph_node_redacts_raw_neighbor_slot_list(provider, fake_client):
+    handle = _search_handle(provider, fake_client, 11)
+    original = fake_client.get_node
+
+    def leaky_node(id, layer=0, collection=""):
+        return {"id": id, "layer": layer, "neighbors": [11, 22, 33]}
+
+    fake_client.get_node = leaky_node
+    try:
+        response = json.loads(provider.handle_tool_call("hyperspace_graph", {
+            "operation": "node", "handle": handle,
+        }))
+    finally:
+        fake_client.get_node = original
+
+    assert response["ok"] is True
+    result = response["result"]
+    assert "neighbors" not in result
+    handles = result["neighbor_handles"]
+    assert len(handles) == 3
+    assert all(isinstance(item, str) and item.startswith("hsdbh_") for item in handles)
+    dumped = json.dumps(result)
+    assert "11" not in dumped and "22" not in dumped and "33" not in dumped

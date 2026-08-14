@@ -9,6 +9,18 @@ import pytest
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def isolate_hyperspace_process_env(monkeypatch):
+    """Keep unit tests independent of the operator's live Hyperspace env."""
+    for name in (
+        "HYPERSPACE_API_KEY",
+        "HYPERSPACE_USER_ID",
+        "HYPERSPACE_OWNERSHIP_HMAC_KEY",
+        "HSDB_TEST_OWNERSHIP_HMAC_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def load_plugin():
     name = "hermes_hyperspacedb_plugin_under_test"
     sys.modules.pop(name, None)

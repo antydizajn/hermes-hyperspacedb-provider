@@ -60,7 +60,7 @@ specific collection default.
 - `metric`: vectorization metric; `lorentz` is the default.
 - `expected_dimension`: optional exact collection dimension. Leave at `0` only when the backend cannot report a stable dimension; otherwise a mismatch fails closed.
 - `ownership_hmac_key_env`: environment variable for the secret used to authenticate provider-owned records. It is required before authenticated writes can succeed; configure it before enabling `auto_store`, and do not put the key in a public configuration file.
-- `rpc_timeout`: clamped to 0.1-7.0 seconds so Hermes prefetch remains bounded.
+- `rpc_timeout`: clamped to 0.1-60.0 seconds. The default remains 4.0; raise it when live embedding RPCs exceed that.
 - `state_path`: optional SQLite identity ledger path. The default is derived
   from the active Hermes home, not from a hardcoded user path.
 - `auto_store`: mirrors curated built-in memory writes.

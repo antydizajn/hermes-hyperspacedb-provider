@@ -123,6 +123,31 @@ def test_geometry_accepts_valid_near_boundary_lorentz_point(provider, fake_clien
     assert response["result"]["dimension"] == 128
 
 
+def _quantized_stored_lorentz(ball_coordinate, extra_spatial_energy=0.007):
+    """Approximate a retrieved embedding: Lorentz plus storage quantization residual."""
+    vector = _lorentz_point(ball_coordinate)
+    vector[1] = math.sqrt(vector[1] * vector[1] + extra_spatial_energy)
+    return vector
+
+
+def test_geometry_accepts_stored_lorentz_vectors_with_embedder_quantization(provider, fake_client):
+    handles = []
+    for point_id, coordinate in ((201, 0.08), (202, 0.12)):
+        fake_client.points[point_id] = {
+            "id": point_id,
+            "vector": _quantized_stored_lorentz(coordinate),
+            "metadata": {},
+            "payload": b"",
+        }
+        handle = provider._mint_point_capability(point_id, provider._collection)
+        assert handle is not None
+        handles.append(handle)
+    response = _geometry(provider, operation="predict_relation", handles=handles)
+    assert response["ok"] is True
+    assert response["result"]["dimension"] == 128
+    assert math.isfinite(response["result"]["l2_norm"])
+
+
 def test_geometry_propagates_swallowed_sdk_error(provider, fake_client, plugin):
     handles = _issued_handles(provider, fake_client, [0.05, 0.10])
     telemetry = plugin._RpcTelemetry()
@@ -165,3 +190,58 @@ def test_geometry_converts_math_helper_exceptions_to_redacted_json_error(provide
     assert response["ok"] is False
     assert response["error"]["code"] == "MALFORMED_RESULT"
     assert "private helper failure" not in response["error"]["message"]
+
+
+def test_geometry_projects_quantized_off_sheet_lorentz_vectors(provider, fake_client):
+    exact = _lorentz_point(0.2)
+    drifted = list(exact)
+    drifted[1] = math.sqrt(drifted[1] * drifted[1] + 0.08)
+    handles = []
+    for point_id, vector in ((301, drifted), (302, _lorentz_point(0.25))):
+        fake_client.points[point_id] = {
+            "id": point_id,
+            "vector": vector,
+            "metadata": {},
+            "payload": b"",
+        }
+        handle = provider._mint_point_capability(point_id, provider._collection)
+        assert handle is not None
+        handles.append(handle)
+    response = _geometry(provider, operation="predict_relation", handles=handles)
+    assert response["ok"] is True
+    assert response["result"]["dimension"] == 128
+
+
+def test_geometry_still_rejects_spacelike_vectors(provider, fake_client):
+    handles = []
+    for point_id, vector in ((311, [0.1] + [1.0] * 128), (312, _lorentz_point(0.1))):
+        fake_client.points[point_id] = {
+            "id": point_id,
+            "vector": vector,
+            "metadata": {},
+            "payload": b"",
+        }
+        handle = provider._mint_point_capability(point_id, provider._collection)
+        assert handle is not None
+        handles.append(handle)
+    response = _geometry(provider, operation="predict_relation", handles=handles)
+    assert response["ok"] is False
+    assert response["error"]["code"] == "MALFORMED_RESULT"
+
+
+def test_geometry_revectorizes_when_stored_point_is_not_lorentz(provider, fake_client):
+    handles = []
+    for point_id, coordinate in ((401, 0.08), (402, 0.12)):
+        fake_client.points[point_id] = {
+            "id": point_id,
+            "vector": [1e20] + [1e20] * 128,
+            "metadata": {"_content": "revectorize geometry %s" % point_id},
+            "payload": b"",
+        }
+        handle = provider._mint_point_capability(point_id, provider._collection)
+        assert handle is not None
+        handles.append(handle)
+    response = _geometry(provider, operation="predict_relation", handles=handles)
+    assert response["ok"] is True
+    assert response["result"]["dimension"] == 128
+    assert any(call[0] == "vectorize" for call in fake_client.calls)
