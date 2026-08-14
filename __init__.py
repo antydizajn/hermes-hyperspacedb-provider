@@ -1005,6 +1005,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         self._failed_writes = 0
         self._shutdown = False
         self._capability_lock = threading.RLock()
+        self._handle_op_lock = threading.RLock()
         self._point_capabilities: Dict[str, Tuple[int, str, str, str, float]] = {}
 
     @property
@@ -1130,11 +1131,18 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         if isinstance(error, (BackendTimeout, BackendUnavailable, BackendAuthError)):
             self._health = "DEGRADED"
 
-    def _call(self, method: str, *args: Any, **kwargs: Any) -> Any:
+    def _write_rpc_timeout(self, content: str) -> float:
+        """Scale write RPC deadline with payload length. Reads stay on _rpc_timeout."""
+        extra = max(0, len(str(content or ""))) / 400.0
+        return min(300.0, max(float(self._rpc_timeout), 4.0 + extra))
+
+    def _call(self, method: str, *args: Any, rpc_timeout: Optional[float] = None, **kwargs: Any) -> Any:
         client: Any = None
         telemetry: Optional[_RpcTelemetry] = None
         try:
             client = self._get_client()
+            deadline = float(self._rpc_timeout if rpc_timeout is None else rpc_timeout)
+            _install_deadlines(client, deadline)
             candidate = getattr(client, "_hermes_hyperspace_rpc_telemetry", None)
             if isinstance(candidate, _RpcTelemetry):
                 telemetry = candidate
@@ -1741,7 +1749,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         digest: str,
     ) -> None:
         indexed = f"[{metadata['target']}] {content}"
-        vector = self._call("vectorize", indexed, metric=self._metric)
+        write_timeout = self._write_rpc_timeout(content)
+        vector = self._call("vectorize", indexed, metric=self._metric, rpc_timeout=write_timeout)
         if not isinstance(vector, (list, tuple)) or not vector:
             raise BackendMalformed("Vectorize RPC returned no vector")
         ok = self._call(
@@ -1753,6 +1762,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             metadata=metadata,
             collection=self._collection,
             durability=self._durability,
+            rpc_timeout=write_timeout,
         )
         if ok is not True:
             raise MutationVerificationError("Insert did not return True")
@@ -2604,6 +2614,9 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         unexpected = sorted(set(supplied) - _TOOL_ALLOWED_ARGS[tool_name])
         if unexpected:
             return _json_error("INVALID_ARGUMENT", "Unexpected tool argument(s): " + ", ".join(unexpected))
+        if tool_name in {"hyperspace_graph", "hyperspace_hierarchy", "hyperspace_geometry"}:
+            with self._handle_op_lock:
+                return handler(supplied)
         return handler(supplied)
 
     def backup_paths(self) -> List[str]:

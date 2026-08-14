@@ -1,5 +1,5 @@
 name: hyperspacedb
-version: "2.2.0"
+version: "2.2.1"
 license: "MIT"
 description: "Fail-closed HyperspaceDB memory provider with ordered mutations, provenance gating, and bounded retrieval."
 hooks:

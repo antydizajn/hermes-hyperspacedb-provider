@@ -14,7 +14,7 @@ TEXT_EXTENSIONS = {".py", ".md", ".yaml", ".yml", ".toml", ".txt"}
 _EXPORT_IGNORED_NAMES = {
     "PLAN.md", "PLAN-LUNA.md", "HANDOFF.md", "HANDOFF-TERRA-2.md",
     "AUDIT.md", "AUDIT-CLEAN-20260813.md", "LUNA-AUDIT-REPORT.md",
-    "PROMPT_ITERATIONS.md",
+    "PROMPT_ITERATIONS.md", "HANDOFF_NEXT_SESSION.md",
 }
 _NON_SHIPPED_DIRS = {"state", "_deferred_events", "__pycache__", ".ci", ".git"}
 
