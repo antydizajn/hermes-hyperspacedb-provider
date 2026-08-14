@@ -412,8 +412,30 @@ class _RpcTelemetry:
         return errors[0] if errors else None
 
 
+_rpc_deadline_local = threading.local()
+
+
+def _current_rpc_deadline(default: float) -> float:
+    value = getattr(_rpc_deadline_local, "timeout", None)
+    return float(default if value is None else value)
+
+
+def _push_rpc_deadline(timeout: float) -> Any:
+    previous = getattr(_rpc_deadline_local, "timeout", None)
+    _rpc_deadline_local.timeout = float(timeout)
+    return previous
+
+
+def _pop_rpc_deadline(previous: Any) -> None:
+    if previous is None:
+        if hasattr(_rpc_deadline_local, "timeout"):
+            delattr(_rpc_deadline_local, "timeout")
+        return
+    _rpc_deadline_local.timeout = previous
+
+
 class _DeadlineStubProxy:
-    """Inject deadlines and retain RPC failures swallowed by an SDK wrapper."""
+    """Inject per-call deadlines and retain RPC failures swallowed by an SDK wrapper."""
 
     def __init__(self, stub: Any, timeout: float, telemetry: Optional[_RpcTelemetry] = None):
         self._stub = stub
@@ -426,7 +448,7 @@ class _DeadlineStubProxy:
             return value
 
         def call(*args: Any, **kwargs: Any) -> Any:
-            kwargs.setdefault("timeout", self._timeout)
+            kwargs.setdefault("timeout", _current_rpc_deadline(self._timeout))
             try:
                 return value(*args, **kwargs)
             except Exception as exc:
@@ -436,13 +458,15 @@ class _DeadlineStubProxy:
         return call
 
 def _install_deadlines(client: Any, timeout: float) -> _RpcTelemetry:
-    """Attach deadline wrappers and expose hidden RPC failure telemetry."""
+    """Wrap stubs once. Per-call deadline lives in thread-local, not shared stubs."""
     telemetry = getattr(client, "_hermes_hyperspace_rpc_telemetry", None)
     if not isinstance(telemetry, _RpcTelemetry):
         telemetry = _RpcTelemetry()
         setattr(client, "_hermes_hyperspace_rpc_telemetry", telemetry)
     stubs = getattr(client, "stubs", None)
     if isinstance(stubs, list):
+        if stubs and all(isinstance(stub, _DeadlineStubProxy) for stub in stubs):
+            return telemetry
         client.stubs = [
             _DeadlineStubProxy(
                 stub._stub if isinstance(stub, _DeadlineStubProxy) else stub,
@@ -1142,7 +1166,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         try:
             client = self._get_client()
             deadline = float(self._rpc_timeout if rpc_timeout is None else rpc_timeout)
-            _install_deadlines(client, deadline)
+            _install_deadlines(client, self._rpc_timeout)
+            previous_deadline = _push_rpc_deadline(deadline)
             candidate = getattr(client, "_hermes_hyperspace_rpc_telemetry", None)
             if isinstance(candidate, _RpcTelemetry):
                 telemetry = candidate
@@ -1166,6 +1191,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
                     self._retire_client_locked(client)
             raise error from exc
         finally:
+            if "previous_deadline" in locals():
+                _pop_rpc_deadline(previous_deadline)
             self._release_client(client)
 
     def _probe_health(self) -> str:

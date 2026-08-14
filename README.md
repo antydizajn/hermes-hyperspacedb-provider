@@ -7,7 +7,7 @@ bounded memory tools, and keeps a local identity ledger so `add`, `replace`, and
 
 ## Status
 
-Version 2.2.1 also scales write RPC deadlines with payload length (4s + 1s/400 chars, cap 300s) and serializes graph, hierarchy, and geometry so parallel tool calls in one turn cannot race the capability table. Version 2.2.1 hardens the collection contract: Lorentz inference requires the
+Version 2.2.2 also scales write RPC deadlines with payload length (4s + 1s/400 chars, cap 300s) and serializes graph, hierarchy, and geometry so parallel tool calls in one turn cannot race the capability table. Version 2.2.2 hardens the collection contract: Lorentz inference requires the
 hyperboloid invariant, session switch purges capabilities, and setup marks HMAC
 and API keys as secrets. A deployment is not E2E verified until its operator
 runs an authorized add/replace/remove probe against a dedicated test collection.
@@ -173,8 +173,6 @@ formula is degenerate (it returns a constant 0.5 for trajectories ending at its
 own attractor). These are geometric diagnostics, not evidence that a memory is
 factually true or safe;
 raw vectors, point IDs, and predicted point content are never returned.
-
-Write RPCs scale their deadline with payload length (4s + 1s/400 chars, cap 300s). Graph, hierarchy, and geometry handlers share one in-process lock so parallel tool calls in one turn cannot race the capability table.
 
 Write RPCs scale their deadline with payload length (4s + 1s/400 chars, cap 300s). Graph, hierarchy, and geometry handlers share one in-process lock so parallel tool calls in one turn cannot race the capability table.
 
