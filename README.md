@@ -225,3 +225,12 @@ collection intact for operator inspection and never uses this plugin's `state/`.
   database does not exist.
 - A universal semantic distance cutoff would be dishonest; calibrate
   `max_distance` on the target metric and corpus.
+
+
+## Authors
+
+Created by Paulina Janowska and Gniewisława AI.
+
+Proudly witchcrafted in Poznań, Poland ♥
+
+Built with skepticism and an unreasonable allergy to confident bullshit.

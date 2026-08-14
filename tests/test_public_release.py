@@ -181,6 +181,14 @@ def test_readme_discloses_plaintext_ledger_and_permission_boundary():
     assert "not encryption at rest" in text
 
 
+def test_readme_has_required_authorship_block():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Created by Paulina Janowska and Gniewisława AI." in text
+    assert "Proudly witchcrafted in Poznań, Poland" in text
+    assert "unreasonable allergy to confident bullshit" in text
+    assert "\u2014" not in text and "\u2013" not in text
+
+
 def test_readme_matches_collection_contract_configuration():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "`expected_dimension`" in text
