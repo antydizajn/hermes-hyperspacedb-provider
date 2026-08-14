@@ -24,7 +24,7 @@ jobs:
         with:
           repository: NousResearch/hermes-agent
           ref: 56a41715dc3b8bf6f50a740ff9416c4036ef4259
-          path: hermes-agent
+          path: ${{ runner.temp }}/hermes-agent
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,30 +36,29 @@ jobs:
 
       - name: Install plugin into bundled Hermes memory path
         run: |
-          mkdir -p hermes-agent/plugins/memory/hyperspacedb
-          rsync -a --exclude .git --exclude hermes-agent --exclude .github ./ hermes-agent/plugins/memory/hyperspacedb/
+          mkdir -p "${{ runner.temp }}/hermes-agent/plugins/memory/hyperspacedb"
+          rsync -a --exclude .git --exclude .github ./ "${{ runner.temp }}/hermes-agent/plugins/memory/hyperspacedb/"
 
       - name: Unit and contract tests
         env:
-          PYTHONPATH: ${{ github.workspace }}/hermes-agent
+          PYTHONPATH: ${{ runner.temp }}/hermes-agent
           PYTHONDONTWRITEBYTECODE: "1"
         run: python -m pytest -q tests --ignore=tests/run_test_collection_e2e.py -p no:cacheprovider
 
       - name: User-install discovery smoke
         env:
-          PYTHONPATH: ${{ github.workspace }}/hermes-agent
+          PYTHONPATH: ${{ runner.temp }}/hermes-agent
           HERMES_HOME: ${{ runner.temp }}/hermes-home
         run: |
           mkdir -p "$HERMES_HOME/plugins/hyperspacedb"
-          rsync -a --exclude .git --exclude hermes-agent --exclude .github ./ "$HERMES_HOME/plugins/hyperspacedb/"
+          rsync -a --exclude .git --exclude .github ./ "$HERMES_HOME/plugins/hyperspacedb/"
           python - <<'PY'
           import os
           from pathlib import Path
           from plugins.memory import find_provider_dir, _is_memory_provider_dir
           home = Path(os.environ["HERMES_HOME"])
           user = home / "plugins" / "hyperspacedb"
-          assert user.is_dir(), user
-          assert _is_memory_provider_dir(user), user
+          assert _is_memory_provider_dir(user)
           found = find_provider_dir("hyperspacedb")
           print("found", found)
           assert found is not None

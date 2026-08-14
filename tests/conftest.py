@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path as _Path
+
+_STUB = _Path(__file__).resolve().parent / "stubs"
+if _STUB.is_dir():
+    try:
+        import hyperspace  # noqa: F401
+    except ImportError:
+        sys.path.insert(0, str(_STUB))
+
 import importlib.util
 import sys
 from pathlib import Path
