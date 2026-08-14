@@ -997,6 +997,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         self._worker: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._session_id = ""
+        self._agent_context = "primary"
+        self._writes_enabled = True
         self._health = "NOT_PROBED"
         self._last_error_code = ""
         self._last_error = ""
@@ -1091,6 +1093,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
     def _release_client(self, client: Any) -> None:
         if client is None:
             return
+        ledger = None
         with self._client_lock:
             count = self._client_inflight.get(id(client), 0)
             if count <= 1:
@@ -1098,8 +1101,13 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
                 if any(item is client for item in self._retired_clients):
                     self._retired_clients = [item for item in self._retired_clients if item is not client]
                     _close_client(client)
+                if self._shutdown and not self._client_inflight and self._ledger is not None:
+                    ledger = self._ledger
+                    self._ledger = None
             else:
                 self._client_inflight[id(client)] = count - 1
+        if ledger is not None:
+            ledger.close()
 
     def _get_client(self) -> Any:
         self._validate_config()
@@ -1194,7 +1202,14 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         ):
             return "", None
         dimension = len(vector)
-        if dimension == 129 and float(vector[0]) > 0.0:
+        if dimension != 129 or float(vector[0]) <= 0.0:
+            return "", dimension
+        lorentz = [float(value) for value in vector]
+        spatial_norm_sq = math.fsum(value * value for value in lorentz[1:])
+        time_sq = lorentz[0] * lorentz[0]
+        residual = abs(time_sq - spatial_norm_sq - 1.0)
+        invariant_scale = max(1.0, abs(time_sq), abs(spatial_norm_sq))
+        if residual <= 1e-2 * invariant_scale:
             return "lorentz", dimension
         return "", dimension
 
@@ -1269,6 +1284,9 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
 
     def initialize(self, session_id: str, **kwargs: Any) -> None:
         self._session_id = session_id
+        context = str(kwargs.get("agent_context") or "primary").strip().lower() or "primary"
+        self._agent_context = context
+        self._writes_enabled = context == "primary"
         with self._capability_lock:
             self._point_capabilities.clear()
         hermes_home_value = str(kwargs.get("hermes_home") or "").strip()
@@ -1304,6 +1322,20 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             self._mark_error(error)
             self._health = "CONFIGURATION_ERROR" if isinstance(error, ConfigurationError) else "DEGRADED"
 
+    def on_session_switch(
+        self,
+        new_session_id: str,
+        *,
+        parent_session_id: str = "",
+        reset: bool = False,
+        rewound: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        del parent_session_id, reset, rewound, kwargs
+        self._session_id = str(new_session_id or "")
+        with self._capability_lock:
+            self._point_capabilities.clear()
+
     def get_config_schema(self) -> List[Dict[str, Any]]:
         return [
             {"key": "collection", "description": "Existing HyperspaceDB collection name", "default": ""},
@@ -1311,6 +1343,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             {"key": "metric", "description": "Existing collection metric", "default": "lorentz", "choices": ["lorentz", "cosine", "l2"]},
             {"key": "expected_dimension", "description": "Optional exact collection dimension (0 disables the check)", "default": "0"},
             {"key": "ownership_hmac_key_env", "description": "Environment variable containing the ownership HMAC key", "default": "HYPERSPACE_OWNERSHIP_HMAC_KEY"},
+            {"key": "ownership_hmac_key", "description": "Ownership HMAC key for authenticated writes", "secret": True, "env_var": "HYPERSPACE_OWNERSHIP_HMAC_KEY"},
+            {"key": "api_key", "description": "HyperspaceDB API key", "secret": True, "env_var": "HYPERSPACE_API_KEY"},
             {"key": "top_k", "description": "Automatic prefetch result count", "default": str(_DEFAULT_TOP_K)},
             {"key": "auto_store", "description": "Mirror curated built-in memory writes", "default": "true", "choices": ["true", "false"]},
             {"key": "trust_mode", "description": "Automatic prefetch trust policy", "default": "owned_only", "choices": ["owned_only", "annotate_all"]},
@@ -1319,13 +1353,25 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
 
     def save_config(self, values: dict, hermes_home: str) -> None:
         from hermes_cli.config import load_config, save_config
+        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
 
-        config = load_config()
-        if not isinstance(config.get("memory"), dict):
-            config["memory"] = {}
-        clean = {key: value for key, value in dict(values).items() if key != "api_key"}
-        config["memory"]["hyperspacedb"] = clean
-        save_config(config)
+        token = None
+        if str(hermes_home or "").strip():
+            token = set_hermes_home_override(hermes_home)
+        try:
+            config = load_config()
+            if not isinstance(config.get("memory"), dict):
+                config["memory"] = {}
+            clean = {
+                key: value
+                for key, value in dict(values).items()
+                if key not in {"api_key", "ownership_hmac_key"}
+            }
+            config["memory"]["hyperspacedb"] = clean
+            save_config(config)
+        finally:
+            if token is not None:
+                reset_hermes_home_override(token)
 
     def system_prompt_block(self) -> str:
         health = self._health
@@ -1726,6 +1772,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         user_metadata: Optional[Dict[str, Any]] = None,
     ) -> Tuple[LedgerRecord, bool]:
         self._require_collection_contract()
+        if not getattr(self, "_writes_enabled", True):
+            raise ConfigurationError("Writes are disabled outside agent_context=primary")
         if self._ledger is None:
             raise ConfigurationError("Provider is not initialized")
         clean = str(content).strip()
@@ -2531,6 +2579,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             return _json_error(error.code, str(error))
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs: Any) -> str:
+        if tool_name == "hyperspace_store" and not getattr(self, "_writes_enabled", True):
+            return _json_error("CONFIGURATION_ERROR", "Writes are disabled outside agent_context=primary")
         handlers = {
             "hyperspace_search": self._tool_search,
             "hyperspace_store": self._tool_store,

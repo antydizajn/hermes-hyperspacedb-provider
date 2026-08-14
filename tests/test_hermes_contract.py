@@ -132,7 +132,7 @@ def test_schema_none_uses_stored_point_when_list_collections_times_out(provider,
     fake_client.list_collections = lambda: (_ for _ in ()).throw(TimeoutError("list_collections deadline"))
     fake_client.points[7] = {
         "id": 7,
-        "vector": [1.5] + [0.0] * 128,
+        "vector": [1.1276259652063807] + [0.5210953054937474] + [0.0] * 127,
         "metadata": {},
         "payload": b"",
     }
@@ -141,6 +141,53 @@ def test_schema_none_uses_stored_point_when_list_collections_times_out(provider,
     assert provider._collection_contract_verified is True
     assert provider._observed_dimension == 129
     assert provider._configured_metric == "lorentz"
+
+
+
+def test_schema_none_rejects_off_sheet_129d_vector(provider, fake_client):
+    fake_client.stats_value = {"schema": None, "count": 1}
+    fake_client.list_collections = lambda: (_ for _ in ()).throw(TimeoutError("list_collections deadline"))
+    fake_client.points[9] = {
+        "id": 9,
+        "vector": [1.5] + [0.0] * 128,
+        "metadata": {},
+        "payload": b"",
+    }
+    provider._expected_dimension = 129
+    provider.initialize("schema-none-off-sheet")
+    assert provider._collection_contract_verified is False
+
+
+def test_on_session_switch_clears_capabilities_and_rebinds_session(provider, fake_client):
+    provider.initialize("sess-a")
+    handle = provider._mint_point_capability(1, provider._collection)
+    assert handle
+    assert provider._session_id == "sess-a"
+    provider.on_session_switch("sess-b", reset=True)
+    assert provider._session_id == "sess-b"
+    assert provider._point_capabilities == {}
+    try:
+        provider._resolve_point_capability(handle, provider._collection)
+        raise AssertionError("old capability must not survive session switch")
+    except Exception as error:
+        assert getattr(error, "code", "") in {"CAPABILITY_FORBIDDEN", "CONFIGURATION_ERROR"}
+
+
+def test_setup_schema_marks_hmac_and_api_key_as_secrets(plugin):
+    fields = {item["key"]: item for item in plugin.HyperspaceDBMemoryProvider().get_config_schema()}
+    hmac = fields["ownership_hmac_key"]
+    assert hmac.get("secret") is True
+    assert hmac.get("env_var") == "HYPERSPACE_OWNERSHIP_HMAC_KEY"
+    api = fields["api_key"]
+    assert api.get("secret") is True
+    assert api.get("env_var") == "HYPERSPACE_API_KEY"
+
+
+def test_non_primary_agent_context_rejects_store(provider, fake_client):
+    provider.initialize("ctx-cron", agent_context="cron")
+    result = __import__("json").loads(provider.handle_tool_call("hyperspace_store", {"content": "cron must not write"}))
+    assert result["ok"] is False
+    assert result["error"]["code"] == "CONFIGURATION_ERROR"
 
 
 def test_schema_none_stays_unverified_without_stored_vectors(provider, fake_client):

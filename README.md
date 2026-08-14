@@ -23,11 +23,13 @@ The plugin never creates or deletes collections automatically.
 
 ## Install
 
-Copy this directory to the active Hermes profile's memory plugin directory:
+User-installed providers are scanned from the flat profile plugins directory:
 
 ```text
-$HERMES_HOME/plugins/memory/hyperspacedb
+$HERMES_HOME/plugins/hyperspacedb
 ```
+
+Bundled/dev checkouts stay at `hermes-agent/plugins/memory/hyperspacedb`. Hermes does not scan `$HERMES_HOME/plugins/memory/hyperspacedb` for user installs.
 
 Then configure the provider and start a new Hermes session. Do not put API keys
 in this repository.
