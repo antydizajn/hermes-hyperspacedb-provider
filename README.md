@@ -130,6 +130,9 @@ returned string as authoritative reference context. This plugin therefore:
 
 `owned_only` is the recommended public default. It automatically injects only
 HMAC-authenticated records whose signed source is `hermes-builtin-memory`.
+HMAC authenticates provenance. It does not make that content true or safe.
+A signed built-in memory write can still carry paraphrased instructions.
+Regex quarantine is defense-in-depth, not a security boundary.
 Explicit tool stores and other producers remain explicit-search data. The provider
 also recomputes the logical digest from the returned payload before accepting
 provider ownership. `annotate_all` is for mixed-producer migration and expands

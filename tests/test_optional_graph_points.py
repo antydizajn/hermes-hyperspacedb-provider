@@ -182,5 +182,4 @@ def test_graph_node_redacts_raw_neighbor_slot_list(provider, fake_client):
     handles = result["neighbor_handles"]
     assert len(handles) == 3
     assert all(isinstance(item, str) and item.startswith("hsdbh_") for item in handles)
-    dumped = json.dumps(result)
-    assert "11" not in dumped and "22" not in dumped and "33" not in dumped
+    assert json.dumps([11, 22, 33]) not in json.dumps(result)

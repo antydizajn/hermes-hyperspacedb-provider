@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path as _Path
 
 _STUB = _Path(__file__).resolve().parent / "stubs"
-if _STUB.is_dir():
+_REQUIRE_REAL_SDK = os.environ.get("HSDB_REQUIRE_REAL_SDK") == "1"
+if _REQUIRE_REAL_SDK:
+    import hyperspace  # noqa: F401
+elif _STUB.is_dir():
     try:
         import hyperspace  # noqa: F401
     except ImportError:
