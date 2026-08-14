@@ -376,4 +376,7 @@ def test_release_ships_github_actions_ci():
     assert "NousResearch/hermes-agent" in text
     assert "56a41715dc3b8bf6f50a740ff9416c4036ef4259" in text
     assert "pytest" in text
+    assert "found.resolve() == user" in text
+    assert "HSDB_REQUIRE_REAL_SDK" in text
+    assert "hyperspacedb==3.1.3" in text
     assert "$HERMES_HOME/plugins/hyperspacedb" in text or "plugins/hyperspacedb" in text
