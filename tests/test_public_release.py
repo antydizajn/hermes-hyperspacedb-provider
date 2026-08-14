@@ -366,3 +366,14 @@ def test_e2e_runner_never_defaults_its_ledger_into_plugin_state():
     text = (ROOT / "tests" / "run_test_collection_e2e.py").read_text(encoding="utf-8")
     assert '"state_path": state_path' in text
     assert 'ROOT / "state"' not in text
+
+
+def test_release_ships_github_actions_ci():
+    workflow = ROOT / ".github" / "workflows" / "ci.yml"
+    if not workflow.is_file():
+        pytest.skip("CI workflow lives in the standalone public repo")
+    text = workflow.read_text(encoding="utf-8")
+    assert "NousResearch/hermes-agent" in text
+    assert "56a41715dc3b8bf6f50a740ff9416c4036ef4259" in text
+    assert "pytest" in text
+    assert "$HERMES_HOME/plugins/hyperspacedb" in text or "plugins/hyperspacedb" in text

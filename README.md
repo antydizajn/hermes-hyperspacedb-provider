@@ -7,10 +7,10 @@ bounded memory tools, and keeps a local identity ledger so `add`, `replace`, and
 
 ## Status
 
-Version 2.1.0 adds capability-scoped Lorentz geometry diagnostics to the
-hardened source and unit-contract surface. A deployment
-is not E2E verified until its operator runs an authorized add/replace/remove
-probe against a dedicated test collection.
+Version 2.2.0 hardens the collection contract: Lorentz inference requires the
+hyperboloid invariant, session switch purges capabilities, and setup marks HMAC
+and API keys as secrets. A deployment is not E2E verified until its operator
+runs an authorized add/replace/remove probe against a dedicated test collection.
 
 ## Requirements
 
