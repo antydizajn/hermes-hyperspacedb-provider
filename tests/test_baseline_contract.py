@@ -1,0 +1,35 @@
+from pathlib import Path
+
+SOURCE = (Path(__file__).resolve().parents[1] / "__init__.py").read_text(encoding="utf-8")
+
+
+def test_module_starts_with_valid_python_not_grpc_noise():
+    assert SOURCE.lstrip().startswith('"""')
+
+
+def test_public_code_has_no_private_stack_hardcodes():
+    forbidden = [
+        "gniewka" + "_omniscient",
+        "Gniew" + "islawa",
+        "Anti" + "gravity",
+        "~/" + "AI/",
+        "/" + "Users/",
+    ]
+    for token in forbidden:
+        assert token not in SOURCE
+
+
+def test_remove_is_not_ignored():
+    assert 'action not in {"add", "replace"}' not in SOURCE
+
+
+def test_payload_is_supported():
+    assert 'raw.get("payload")' in SOURCE
+
+
+def test_decorative_deadline_is_gone():
+    assert "deadline = time.monotonic()" not in SOURCE
+
+
+def test_private_checkout_is_not_a_backup_path():
+    assert "EXTERNAL/hyperspace-db" not in SOURCE

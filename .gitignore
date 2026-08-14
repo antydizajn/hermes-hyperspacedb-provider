@@ -1,0 +1,15 @@
+# Local runtime data. Never package or commit these artifacts.
+/state/
+/.pytest_cache/
+/__pycache__/
+*.py[cod]
+*.sqlite3
+*.sqlite3-*
+*.snapshot.sqlite3
+
+# Local coverage and packaging by-products.
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/

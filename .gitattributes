@@ -1,0 +1,10 @@
+# Local operational records remain versioned in the monorepo but are excluded
+# from any plugin archive produced with git archive.
+PLAN.md export-ignore
+PLAN-LUNA.md export-ignore
+HANDOFF.md export-ignore
+HANDOFF-TERRA-2.md export-ignore
+AUDIT.md export-ignore
+AUDIT-CLEAN-20260813.md export-ignore
+LUNA-AUDIT-REPORT.md export-ignore
+PROMPT_ITERATIONS.md export-ignore
