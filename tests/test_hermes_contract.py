@@ -190,6 +190,18 @@ def test_non_primary_agent_context_rejects_store(provider, fake_client):
     assert result["error"]["code"] == "CONFIGURATION_ERROR"
 
 
+def test_non_primary_on_memory_write_does_not_mutate(provider, fake_client):
+    provider.initialize("ctx-cron", agent_context="cron")
+    before = dict(fake_client.points)
+    provider.on_memory_write("add", "memory", "cron add must not land")
+    assert provider.flush_writes()
+    provider.on_memory_write("replace", "memory", "cron replace", {"old_text": "anything"})
+    assert provider.flush_writes()
+    provider.on_memory_write("remove", "memory", "", {"old_text": "anything"})
+    assert provider.flush_writes()
+    assert fake_client.points == before
+
+
 def test_schema_none_stays_unverified_without_stored_vectors(provider, fake_client):
     fake_client.stats_value = {"schema": None, "count": 0}
     fake_client.list_collections = lambda: (_ for _ in ()).throw(TimeoutError("list_collections deadline"))

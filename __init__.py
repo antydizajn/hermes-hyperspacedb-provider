@@ -2012,6 +2012,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         self, action: str, target: str, content: str,
         metadata: Optional[Dict[str, Any]],
     ) -> None:
+        if not getattr(self, "_writes_enabled", True):
+            raise ConfigurationError("Writes are disabled outside agent_context=primary")
         source = "hermes-builtin-memory"
         trust = "builtin-curated"
         old_text = str((metadata or {}).get("old_text") or "")
@@ -2092,6 +2094,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
+        if not getattr(self, "_writes_enabled", True):
+            return
         if not self._auto_store:
             return
         if action not in {"add", "replace", "remove"}:
@@ -2641,7 +2645,6 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             if self._client_inflight:
                 self._last_error_code = "SHUTDOWN_INFLIGHT"
                 self._last_error = "client close deferred until in-flight RPCs release"
-                return
         if self._ledger is not None:
             self._ledger.close()
             self._ledger = None
