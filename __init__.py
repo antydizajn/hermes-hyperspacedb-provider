@@ -1498,7 +1498,45 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             item["distance"] if item["distance"] is not None else float("inf"),
             str(item["id"]),
         ))
-        return normalized[:bounded]
+        extras = self._ledger_substring_records(clean_query, seen, bounded)
+        return (extras + normalized)[:bounded]
+
+
+    def _ledger_substring_records(
+        self,
+        query: str,
+        seen: set,
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        """Surface our own fresh writes when the vector index has not caught up."""
+        if self._ledger is None or limit <= 0:
+            return []
+        needle = str(query or "").strip().casefold()
+        if len(needle) < 4:
+            return []
+        extras: List[Dict[str, Any]] = []
+        for row in self._ledger.active_records():
+            content = str(row.get("content") or "").strip()
+            if not content or needle not in content.casefold():
+                continue
+            digest = hashlib.sha256(content.encode("utf-8", "replace")).hexdigest()
+            if digest in seen:
+                continue
+            seen.add(digest)
+            extras.append({
+                "id": row.get("external_id"),
+                "content": content,
+                "distance": None,
+                "source": str(row.get("source") or "ledger")[:200],
+                "trust": "owned",
+                "target": str(row.get("target") or "memory")[:100],
+                "timestamp": str(row.get("updated_at") or "")[:100],
+                "allowed_for_prefetch": True,
+                "quarantined": _looks_like_prompt_injection(content),
+            })
+            if len(extras) >= limit:
+                break
+        return extras
 
     def _mint_point_capability(self, raw_id: Any, collection: str) -> Optional[str]:
         """Mint an in-memory, session-scoped capability for one backend point slot."""
