@@ -85,3 +85,11 @@ def test_output_truncation_is_explicit(provider, fake_client):
     fake_client.search_results = [{"id": 1, "payload": (b"x" * 500), "metadata": {}, "distance": 0.1}]
     out = json.loads(provider.handle_tool_call("hyperspace_search", {"query": "long"}))
     assert out["results"][0]["truncated"] is True
+
+
+def test_standard_search_sends_hybrid_query(provider, fake_client):
+    fake_client.search_results = [{"id": 1, "payload": b"fact", "metadata": {"source": "test"}, "distance": 0.1}]
+    out = json.loads(provider.handle_tool_call("hyperspace_search", {"query": "facts", "limit": 1}))
+    assert out["ok"] is True
+    assert fake_client.last_search["hybrid_query"] == "facts"
+    assert fake_client.last_search["hybrid_alpha"] == 0.7

@@ -153,6 +153,8 @@ class FakeClient:
             "include_payload": include_payload,
             "use_wasserstein": use_wasserstein,
             "use_wave": use_wave,
+            "hybrid_query": hybrid_query,
+            "hybrid_alpha": hybrid_alpha,
         }
         if self.search_results is not None:
             return list(self.search_results)[:top_k]

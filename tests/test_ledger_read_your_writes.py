@@ -20,3 +20,17 @@ def test_ledger_fallback_does_not_match_unrelated_query(provider, fake_client):
     assert out["ok"] is True
     assert out["state"] == "NO_HIT"
     assert out["results"] == []
+
+
+def test_ledger_fallback_result_has_capability_handle(provider, fake_client):
+    fake_client.search_results = []
+    marker = "ryw_handle_nonce_aa11"
+    provider.on_memory_write("add", "memory", f"fresh fact {marker}")
+    assert provider.flush_writes(timeout=5)
+    out = json.loads(provider.handle_tool_call("hyperspace_search", {"query": marker, "limit": 5}))
+    assert out["ok"] is True
+    hit = next(item for item in out["results"] if marker in item.get("content", ""))
+    handle = hit.get("handle")
+    assert isinstance(handle, str) and handle.startswith("hsdbh_")
+    node = json.loads(provider.handle_tool_call("hyperspace_graph", {"operation": "node", "handle": handle}))
+    assert node.get("ok") is True
