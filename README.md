@@ -7,7 +7,7 @@ bounded memory tools, and keeps a local identity ledger so `add`, `replace`, and
 
 ## Status
 
-Version 2.3.0 also returns a just-written ledger record when vector search misses the same substring. also scales write RPC deadlines with payload length (4s + 1s/400 chars, cap 300s) and serializes graph, hierarchy, and geometry so parallel tool calls in one turn cannot race the capability table. Version 2.3.0 hardens the collection contract: Lorentz inference requires the
+Version 2.4.0 also returns a just-written ledger record when vector search misses the same substring. also scales write RPC deadlines with payload length (4s + 1s/400 chars, cap 300s) and serializes graph, hierarchy, and geometry so parallel tool calls in one turn cannot race the capability table. Version 2.4.0 hardens the collection contract: Lorentz inference requires the
 hyperboloid invariant, session switch purges capabilities, and setup marks HMAC
 and API keys as secrets. A deployment is not E2E verified until its operator
 runs an authorized add/replace/remove probe against a dedicated test collection.
@@ -146,7 +146,7 @@ The identity ledger is a local SQLite file containing plaintext memory content n
 
 ## Tools
 
-The plugin exposes exactly ten bounded tools:
+The plugin exposes exactly ten bounded tools by default. Opt-in only: event_observation_enabled, operator_reconcile_enabled, batch_mutation_enabled:
 
 - `hyperspace_search`
 - `hyperspace_store`

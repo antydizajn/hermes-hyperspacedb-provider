@@ -22,6 +22,7 @@ import secrets
 import sqlite3
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,6 +48,45 @@ _DEFAULT_COLLISION_PROBES = 64
 _CAPABILITY_TTL_SECONDS = 300.0
 _CAPABILITY_MAX_ENTRIES = 512
 
+HSDB_EVENTS_SCHEMA = {
+    "name": "hyperspace_events",
+    "description": "Poll sanitized HyperspaceDB events. Opt-in. Never returns ids, metadata, or content.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "operation": {"type": "string", "enum": ["recent"]},
+            "limit": {"type": "integer"},
+        },
+        "required": ["operation"],
+    },
+}
+
+HSDB_RECONCILE_SCHEMA = {
+    "name": "hyperspace_reconcile",
+    "description": "Operator-only ledger reconciliation. Hidden unless enabled. dry_run default; apply needs idempotency_token.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "operation": {"type": "string", "enum": ["dry_run", "apply"]},
+            "limit": {"type": "integer"},
+            "idempotency_token": {"type": "string"},
+        },
+        "required": ["operation"],
+    },
+}
+
+HSDB_BATCH_SCHEMA = {
+    "name": "hyperspace_batch",
+    "description": "Bounded batch of add/replace/remove through the single-record ledger path. Opt-in.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "operations": {"type": "array"},
+        },
+        "required": ["operations"],
+    },
+}
+
 _TOOL_ALLOWED_ARGS = {
     "hyperspace_search": {"query", "limit"},
     "hyperspace_store": {"content", "metadata"},
@@ -58,6 +98,9 @@ _TOOL_ALLOWED_ARGS = {
     "hyperspace_search_advanced": {"query", "mode", "top_k", "collection"},
     "hyperspace_admin": {"operation", "collection"},
     "hyperspace_geometry": {"operation", "handles", "steps"},
+    "hyperspace_events": {"operation", "limit"},
+    "hyperspace_reconcile": {"operation", "limit", "idempotency_token"},
+    "hyperspace_batch": {"operations"},
 }
 
 _ADMIN_STATS_FIELDS = (
@@ -571,6 +614,11 @@ class IdentityLedger:
                             "next_retry_epoch REAL NOT NULL, updated_at TEXT NOT NULL, "
                             "FOREIGN KEY(digest) REFERENCES records(digest))"
                         )
+                        self._db.execute(
+                            "CREATE TABLE IF NOT EXISTS operator_receipts "
+                            "(token TEXT PRIMARY KEY, operation TEXT NOT NULL, "
+                            "payload TEXT NOT NULL, created_at TEXT NOT NULL)"
+                        )
                         self._db.execute("PRAGMA user_version=2")
                         self._db.commit()
                     except Exception:
@@ -596,6 +644,12 @@ class IdentityLedger:
                     except Exception:
                         self._db.rollback()
                         raise
+                self._db.execute(
+                    "CREATE TABLE IF NOT EXISTS operator_receipts "
+                    "(token TEXT PRIMARY KEY, operation TEXT NOT NULL, "
+                    "payload TEXT NOT NULL, created_at TEXT NOT NULL)"
+                )
+                self._db.commit()
         except sqlite3.DatabaseError as error:
             raise ConfigurationError("Identity ledger is unreadable or corrupt") from error
 
@@ -751,6 +805,29 @@ class IdentityLedger:
     def clear_reconciliation_retry(self, digest: str) -> None:
         with self._lock:
             self._db.execute("DELETE FROM reconciliation_retries WHERE digest=?", (digest,))
+            self._db.commit()
+
+    def get_operator_receipt(self, token: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT token, operation, payload, created_at FROM operator_receipts WHERE token=?",
+                (token,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(row[2])
+        except Exception:
+            payload = {}
+        return {"token": row[0], "operation": row[1], "payload": payload, "created_at": row[3]}
+
+    def put_operator_receipt(self, token: str, operation: str, payload: Dict[str, Any]) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT OR IGNORE INTO operator_receipts (token, operation, payload, created_at) "
+                "VALUES (?,?,?,?)",
+                (token, operation, json.dumps(payload, sort_keys=True), _utc_now()),
+            )
             self._db.commit()
 
     def failure_count(self) -> int:
@@ -971,6 +1048,18 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         self._reconcile_max_attempts = _bounded_int(self._config.get("reconcile_max_attempts"), 5, 1, 16)
         self._reconcile_base_delay = _bounded_float(self._config.get("reconcile_base_delay"), 30.0, 1.0, 3600.0)
         self._reconcile_startup_budget = _bounded_float(self._config.get("reconcile_startup_budget"), 2.0, 0.1, 30.0)
+        self._event_observation_enabled = _coerce_bool(self._config.get("event_observation_enabled"), False)
+        self._event_buffer_size = _bounded_int(self._config.get("event_buffer_size"), 64, 1, 512)
+        self._operator_reconcile_enabled = _coerce_bool(self._config.get("operator_reconcile_enabled"), False)
+        self._batch_mutation_enabled = _coerce_bool(self._config.get("batch_mutation_enabled"), False)
+        self._event_lock = threading.Lock()
+        self._event_buffer: deque = deque(maxlen=self._event_buffer_size)
+        self._event_dropped = 0
+        self._event_filtered = 0
+        self._event_seen: set = set()
+        self._event_thread: Optional[threading.Thread] = None
+        self._event_stop = threading.Event()
+        self._event_client = None
         self._durability = _bounded_int(self._config.get("durability"), 3, 0, 3)
         self._pool_size = _bounded_int(self._config.get("pool_size"), 4, 1, 32)
         self._auto_store = _coerce_bool(self._config.get("auto_store"), True)
@@ -1349,6 +1438,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             stats = self._call("get_collection_stats", self._collection)
             self._verify_collection_contract(stats)
             self._collection_contract_verified = True
+            if self._event_observation_enabled:
+                self._start_event_observer()
             if self._ownership_hmac_key and _coerce_bool(self._config.get("reconcile_on_initialize"), True):
                 self.reconcile_delete_pending(
                     limit=self._reconcile_limit, budget_seconds=self._reconcile_startup_budget
@@ -2217,8 +2308,163 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             "last_error": _safe_error_message(self._last_error),
         }
 
+
+    def _start_event_observer(self) -> None:
+        if self._event_thread is not None and self._event_thread.is_alive():
+            return
+        self._event_stop.clear()
+        _fingerprint, api_key, user_id = self._current_fingerprint()
+        self._event_client = self._build_client(api_key, user_id)
+        self._event_thread = threading.Thread(
+            target=self._event_loop, name="hsdb-event-observer", daemon=True,
+        )
+        self._event_thread.start()
+
+    def _stop_event_observer(self) -> None:
+        self._event_stop.set()
+        client = self._event_client
+        if client is not None:
+            closer = getattr(client, "close", None)
+            if callable(closer):
+                try:
+                    closer()
+                except Exception:
+                    pass
+        thread = self._event_thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2.0)
+        self._event_client = None
+
+    def _event_loop(self) -> None:
+        client = self._event_client
+        while not self._event_stop.is_set() and not self._shutdown:
+            if client is None:
+                break
+            subscribe = getattr(client, "subscribe_to_events", None)
+            if not callable(subscribe):
+                break
+            try:
+                for event in subscribe(types=["insert"], collection=self._collection):
+                    if self._event_stop.is_set() or self._shutdown:
+                        break
+                    self._ingest_event(event)
+            except Exception:
+                if self._event_stop.wait(0.2):
+                    break
+
+    def _ingest_event(self, event: Any) -> None:
+        if not isinstance(event, dict):
+            with self._event_lock:
+                self._event_filtered += 1
+            return
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        meta = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        profile = str(meta.get("_hs_profile") or "")
+        if profile != self._profile_scope:
+            with self._event_lock:
+                self._event_filtered += 1
+            return
+        key = (str(event.get("type") or ""), payload.get("logical_clock"), payload.get("id"))
+        sanitized = {
+            "event_type": str(event.get("type") or "unknown")[:64],
+            "source": str(meta.get("source") or "unknown")[:200],
+            "target": str(meta.get("target") or "unknown")[:100],
+            "trust": str(meta.get("trust") or "unknown")[:100],
+        }
+        with self._event_lock:
+            if key in self._event_seen:
+                return
+            if self._event_buffer.maxlen is not None and len(self._event_buffer) >= self._event_buffer.maxlen:
+                self._event_dropped += 1
+            self._event_seen.add(key)
+            if len(self._event_seen) > 4096:
+                self._event_seen.clear()
+            self._event_buffer.append(sanitized)
+
+    def _tool_events(self, args: Dict[str, Any]) -> str:
+        if str(args.get("operation") or "") != "recent":
+            return _json_error("INVALID_ARGUMENT", "operation must be recent")
+        limit = _bounded_int(args.get("limit"), 20, 1, 50)
+        with self._event_lock:
+            events = list(self._event_buffer)[-limit:]
+            dropped = self._event_dropped
+            filtered = self._event_filtered
+        return self._tool_json({
+            "ok": True,
+            "events": events,
+            "dropped": dropped,
+            "filtered": filtered,
+        })
+
+    def _tool_reconcile(self, args: Dict[str, Any]) -> str:
+        if self._ledger is None:
+            return _json_error("CONFIGURATION_ERROR", "ledger is unavailable")
+        operation = str(args.get("operation") or "dry_run")
+        if operation not in {"dry_run", "apply"}:
+            return _json_error("INVALID_ARGUMENT", "operation must be dry_run or apply")
+        limit = _bounded_int(args.get("limit"), self._reconcile_limit, 1, 32)
+        pending = list(self._ledger.records_with_status("delete_pending", limit))
+        would = len(pending) if self._ownership_hmac_key else 0
+        if operation == "dry_run":
+            return self._tool_json({
+                "ok": True,
+                "state": "DRY_RUN",
+                "would_apply": would,
+                "skipped_unsigned": 0 if self._ownership_hmac_key else len(pending),
+            })
+        token = str(args.get("idempotency_token") or "").strip()
+        if not token:
+            return _json_error("INVALID_ARGUMENT", "idempotency_token is required for apply")
+        existing = self._ledger.get_operator_receipt(token)
+        if existing is not None:
+            return self._tool_json({
+                "ok": True,
+                "state": "IDEMPOTENT_REPLAY",
+                "receipt": existing,
+            })
+        result = self.reconcile_delete_pending(limit=limit)
+        receipt = {"token": token, "result": result, "would_apply": would}
+        self._ledger.put_operator_receipt(token, "reconcile_apply", receipt)
+        removed = int(result.get("removed") or 0)
+        attempted = int(result.get("attempted") or 0)
+        state = "APPLIED" if removed == attempted else "PARTIAL"
+        return self._tool_json({"ok": True, "state": state, "receipt": receipt, "result": result})
+
+    def _tool_batch(self, args: Dict[str, Any]) -> str:
+        operations = args.get("operations")
+        if not isinstance(operations, list) or not operations:
+            return _json_error("INVALID_ARGUMENT", "operations must be a non-empty list")
+        if len(operations) > 16:
+            return _json_error("INVALID_ARGUMENT", "batch is limited to 16 operations")
+        results: List[Dict[str, Any]] = []
+        for index, raw in enumerate(operations):
+            if not isinstance(raw, dict):
+                results.append({"index": index, "ok": False, "code": "INVALID_ARGUMENT"})
+                continue
+            action = str(raw.get("action") or "").strip()
+            content = str(raw.get("content") or "")
+            old_text = str(raw.get("old_text") or "")
+            if action not in {"add", "replace", "remove"}:
+                results.append({"index": index, "ok": False, "code": "INVALID_ARGUMENT"})
+                continue
+            try:
+                self._apply_memory_event(
+                    action, "memory", content, {"old_text": old_text} if old_text else None,
+                )
+                results.append({"index": index, "ok": True, "state": "APPLIED"})
+            except ProviderError as error:
+                results.append({"index": index, "ok": False, "code": error.code})
+            except Exception:
+                results.append({"index": index, "ok": False, "code": "INTERNAL_ERROR"})
+        ok = all(item.get("ok") is True for item in results)
+        return self._tool_json({
+            "ok": ok,
+            "state": "COMPLETE" if ok else "PARTIAL",
+            "results": results,
+        })
+
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
-        return [
+        schemas = [
             HSDB_SEARCH_SCHEMA,
             HSDB_STORE_SCHEMA,
             HSDB_STATUS_SCHEMA,
@@ -2230,6 +2476,13 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             HSDB_ADMIN_SCHEMA,
             HSDB_GEOMETRY_SCHEMA,
         ]
+        if self._event_observation_enabled:
+            schemas.append(HSDB_EVENTS_SCHEMA)
+        if self._operator_reconcile_enabled:
+            schemas.append(HSDB_RECONCILE_SCHEMA)
+        if self._batch_mutation_enabled:
+            schemas.append(HSDB_BATCH_SCHEMA)
+        return schemas
 
     def _resolve_collection(self, args: Dict[str, Any]) -> str:
         requested = str(args.get("collection") or "").strip()
@@ -2672,6 +2925,12 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             "hyperspace_admin": self._tool_admin,
             "hyperspace_geometry": self._tool_geometry,
         }
+        if self._event_observation_enabled:
+            handlers["hyperspace_events"] = self._tool_events
+        if self._operator_reconcile_enabled:
+            handlers["hyperspace_reconcile"] = self._tool_reconcile
+        if self._batch_mutation_enabled:
+            handlers["hyperspace_batch"] = self._tool_batch
         handler = handlers.get(tool_name)
         if handler is None:
             return _json_error("UNKNOWN_TOOL", f"Unknown tool: {tool_name}")
@@ -2701,6 +2960,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         if self._shutdown:
             return
         self._shutdown = True
+        self._stop_event_observer()
         self.flush_writes(timeout=2.0)
         self._stop_event.set()
         if self._worker is not None and self._worker.is_alive():
