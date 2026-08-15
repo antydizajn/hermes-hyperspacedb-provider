@@ -113,3 +113,13 @@ def test_status_sanitizes_stats_and_fails_closed_on_malformed_stats(provider, fa
 def test_admin_schema_excludes_mutating_operations_and_includes_only_read_only_additions(plugin):
     schema = plugin.HSDB_ADMIN_SCHEMA["parameters"]["properties"]["operation"]
     assert schema["enum"] == ["health", "stats", "count", "digest", "cache_stats"]
+
+
+def test_admin_rejects_destructive_and_unknown_operations(provider, fake_client):
+    before = list(fake_client.calls)
+    for operation in ("vacuum", "delete_collection", "rebuild_index", "forget", "drop"):
+        raw = json.loads(provider.handle_tool_call("hyperspace_admin", {"operation": operation}))
+        assert raw.get("ok") is False
+        assert raw.get("error", {}).get("code") in {"INVALID_ARGUMENT", "CONFIGURATION_ERROR"}
+    after = list(fake_client.calls)
+    assert after == before
