@@ -760,15 +760,25 @@ class IdentityLedger:
             "ledger_schema_version": schema_version,
         }
 
-    def active_records(self, target: Optional[str] = None) -> List[Dict[str, Any]]:
+    def active_records(
+        self,
+        target: Optional[str] = None,
+        profile_scope: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         sql = (
             "SELECT digest, external_id, profile_scope, target, source, content, "
             "status, error, updated_at FROM records WHERE status='active'"
         )
-        params: Tuple[Any, ...] = ()
+        clauses: List[str] = []
+        params: List[Any] = []
         if target is not None:
-            sql += " AND target=?"
-            params = (target,)
+            clauses.append("target=?")
+            params.append(target)
+        if profile_scope is not None:
+            clauses.append("profile_scope=?")
+            params.append(profile_scope)
+        if clauses:
+            sql += " AND " + " AND ".join(clauses)
         sql += " ORDER BY target, content"
         with self._lock:
             rows = self._db.execute(sql, params).fetchall()
@@ -1610,7 +1620,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         if len(needle) < 4:
             return []
         extras: List[Dict[str, Any]] = []
-        for row in self._ledger.active_records():
+        for row in self._ledger.active_records(profile_scope=self._profile_scope):
             content = str(row.get("content") or "").strip()
             if not content or needle not in content.casefold():
                 continue
@@ -1618,15 +1628,22 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             if digest in seen:
                 continue
             seen.add(digest)
+            source = str(row.get("source") or "ledger")[:200]
+            if self._trust_mode == "owned_only":
+                allowed = source in _PREFETCH_OWNED_SOURCES
+            elif self._trust_mode == "annotate_all":
+                allowed = True
+            else:
+                raise ConfigurationError("trust_mode must be owned_only or annotate_all")
             extras.append({
                 "id": row.get("external_id"),
                 "content": content,
                 "distance": None,
-                "source": str(row.get("source") or "ledger")[:200],
-                "trust": "owned",
+                "source": source,
+                "trust": "owned" if source in _PREFETCH_OWNED_SOURCES else "model-authored",
                 "target": str(row.get("target") or "memory")[:100],
                 "timestamp": str(row.get("updated_at") or "")[:100],
-                "allowed_for_prefetch": True,
+                "allowed_for_prefetch": allowed,
                 "quarantined": _looks_like_prompt_injection(content),
             })
             if len(extras) >= limit:
