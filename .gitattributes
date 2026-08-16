@@ -9,3 +9,7 @@ AUDIT-CLEAN-20260813.md export-ignore
 LUNA-AUDIT-REPORT.md export-ignore
 PROMPT_ITERATIONS.md export-ignore
 HANDOFF_NEXT_SESSION.md export-ignore
+GARFIELD_REVIEW_PROMPT_iter1.md export-ignore
+GARFIELD_REVIEW_PROMPT_iter2.md export-ignore
+GARFIELD_REVIEW_PROMPT_iter3.md export-ignore
+HANDOFF-GROK-20260816.md export-ignore

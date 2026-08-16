@@ -15,6 +15,10 @@ _EXPORT_IGNORED_NAMES = {
     "PLAN.md", "PLAN-LUNA.md", "HANDOFF.md", "HANDOFF-TERRA-2.md",
     "AUDIT.md", "AUDIT-CLEAN-20260813.md", "LUNA-AUDIT-REPORT.md",
     "PROMPT_ITERATIONS.md", "HANDOFF_NEXT_SESSION.md",
+    "GARFIELD_REVIEW_PROMPT_iter1.md",
+    "GARFIELD_REVIEW_PROMPT_iter2.md",
+    "GARFIELD_REVIEW_PROMPT_iter3.md",
+    "HANDOFF-GROK-20260816.md",
 }
 _NON_SHIPPED_DIRS = {"state", "_deferred_events", "__pycache__", ".ci", ".git"}
 
@@ -169,6 +173,10 @@ def test_plugin_release_has_license_metadata_and_excludes_workflow_ledgers():
         "AUDIT.md",
         "LUNA-AUDIT-REPORT.md",
         "PROMPT_ITERATIONS.md",
+        "GARFIELD_REVIEW_PROMPT_iter1.md",
+        "GARFIELD_REVIEW_PROMPT_iter2.md",
+        "GARFIELD_REVIEW_PROMPT_iter3.md",
+        "HANDOFF-GROK-20260816.md",
     ):
         assert _is_export_ignored(ROOT / name)
 

@@ -9,6 +9,10 @@ semantics are backed by a local identity ledger.
 
 from __future__ import annotations
 
+import os
+os.environ["GRPC_ENABLE_FORK_SUPPORT"] = "0"
+os.environ["GRPC_DNS_RESOLVER"] = "native"
+
 import hashlib
 import hmac
 import ipaddress
