@@ -7,7 +7,7 @@ bounded memory tools, and keeps a local identity ledger so `add`, `replace`, and
 
 ## Status
 
-Version 2.4.2 applies the owned_only prefetch gate and profile_scope filter to ledger fallback hits. Version 2.4.2 also returns a just-written ledger record when vector search misses the same substring. also scales write RPC deadlines with payload length (4s + 1s/400 chars, cap 300s) and serializes graph, hierarchy, and geometry so parallel tool calls in one turn cannot race the capability table. Version 2.4.2 hardens the collection contract: Lorentz inference requires the
+Version 2.4.3 keeps vector hits ahead of ledger extras and keeps undistanced ledger rows out of annotate_all prefetch when max_distance is set. Version 2.4.2 applies the owned_only prefetch gate and profile_scope filter to ledger fallback hits. Version 2.4.2 also returns a just-written ledger record when vector search misses the same substring. also scales write RPC deadlines with payload length (4s + 1s/400 chars, cap 300s) and serializes graph, hierarchy, and geometry so parallel tool calls in one turn cannot race the capability table. Version 2.4.2 hardens the collection contract: Lorentz inference requires the
 hyperboloid invariant, session switch purges capabilities, and setup marks HMAC
 and API keys as secrets. A deployment is not E2E verified until its operator
 runs an authorized add/replace/remove probe against a dedicated test collection.

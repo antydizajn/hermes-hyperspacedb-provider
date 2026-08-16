@@ -19,6 +19,17 @@ _EXPORT_IGNORED_NAMES = {
     "GARFIELD_REVIEW_PROMPT_iter2.md",
     "GARFIELD_REVIEW_PROMPT_iter3.md",
     "HANDOFF-GROK-20260816.md",
+    "PROMPT_POLISH_iter01.md",
+    "PROMPT_POLISH_iter02.md",
+    "PROMPT_POLISH_iter03.md",
+    "PROMPT_POLISH_iter04.md",
+    "PROMPT_POLISH_iter05.md",
+    "PROMPT_POLISH_iter06.md",
+    "PROMPT_POLISH_iter07.md",
+    "PROMPT_POLISH_iter08.md",
+    "PROMPT_POLISH_iter09.md",
+    "PROMPT_POLISH_iter10.md",
+    "HANDOFF-FINAL-20260816.md",
 }
 _NON_SHIPPED_DIRS = {"state", "_deferred_events", "__pycache__", ".ci", ".git"}
 
@@ -177,6 +188,17 @@ def test_plugin_release_has_license_metadata_and_excludes_workflow_ledgers():
         "GARFIELD_REVIEW_PROMPT_iter2.md",
         "GARFIELD_REVIEW_PROMPT_iter3.md",
         "HANDOFF-GROK-20260816.md",
+        "PROMPT_POLISH_iter01.md",
+        "PROMPT_POLISH_iter02.md",
+        "PROMPT_POLISH_iter03.md",
+        "PROMPT_POLISH_iter04.md",
+        "PROMPT_POLISH_iter05.md",
+        "PROMPT_POLISH_iter06.md",
+        "PROMPT_POLISH_iter07.md",
+        "PROMPT_POLISH_iter08.md",
+        "PROMPT_POLISH_iter09.md",
+        "PROMPT_POLISH_iter10.md",
+        "HANDOFF-FINAL-20260816.md",
     ):
         assert _is_export_ignored(ROOT / name)
 

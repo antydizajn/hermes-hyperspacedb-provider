@@ -1604,7 +1604,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             str(item["id"]),
         ))
         extras = self._ledger_substring_records(clean_query, seen, bounded)
-        return (extras + normalized)[:bounded]
+        return (normalized + extras)[:bounded]
 
 
     def _ledger_substring_records(
@@ -1632,7 +1632,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             if self._trust_mode == "owned_only":
                 allowed = source in _PREFETCH_OWNED_SOURCES
             elif self._trust_mode == "annotate_all":
-                allowed = True
+                allowed = False
             else:
                 raise ConfigurationError("trust_mode must be owned_only or annotate_all")
             extras.append({
