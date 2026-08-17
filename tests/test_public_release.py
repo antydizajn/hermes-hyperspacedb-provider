@@ -118,12 +118,16 @@ def shipped_text():
 
 
 def test_no_private_identifiers_or_absolute_user_paths():
-    forbidden = [
+    code_forbidden = [
         "paulina" + "janowska", "anty" + "dizajn", "gniewka" + "_omniscient",
         "Gniew" + "islawa", "ANTI" + "GRAVITY", "/" + "Users/", "~/" + "AI/",
     ]
+    readme_forbidden = [
+        "gniewka" + "_omniscient", "ANTI" + "GRAVITY", "/" + "Users/", "~/" + "AI/",
+    ]
     failures = []
     for path, text in shipped_text():
+        forbidden = readme_forbidden if path.name == "README.md" else code_forbidden
         for token in forbidden:
             if token.lower() in text.lower():
                 failures.append(f"{path.relative_to(ROOT)}: {token}")

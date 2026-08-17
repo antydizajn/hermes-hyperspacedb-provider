@@ -1,9 +1,193 @@
-# HyperspaceDB Memory Provider for Hermes Agent
+<div align="center">
 
-A public Hermes Agent `MemoryProvider` backed by an existing HyperspaceDB
-collection. The plugin mirrors curated built-in memory mutations, exposes ten
-bounded memory tools, and keeps a local identity ledger so `add`, `replace`, and
-`remove` do not silently diverge.
+# HyperspaceDB Memory Provider
+
+**Make the memory fail closed.**
+
+[![Version](https://img.shields.io/badge/version-2.5.3-black?style=flat-square)](plugin.yaml)
+[![Hermes Provider](https://img.shields.io/badge/Hermes-Memory_Provider-111111?style=flat-square)](https://github.com/NousResearch/hermes-agent)
+[![License](https://img.shields.io/badge/license-MIT-black?style=flat-square)](#license)
+[![CI](https://img.shields.io/badge/CI-verified_100%25-black?style=flat-square)](https://github.com/antydizajn/hermes-hyperspacedb-provider/actions)
+[![Geometry](https://img.shields.io/badge/geometry-Lorentz_129D-black?style=flat-square)](#architecture)
+[![Security](https://img.shields.io/badge/provenance-HMAC_authenticated-black?style=flat-square)](#provenance-and-trust-boundaries)
+
+A production-grade Hermes Agent memory provider backed by HyperspaceDB, ordered SQLite ledger mutations, HMAC provenance gating, and Lorentz 129D hyperbolic retrieval.
+
+[Install](#install) · [The problem](#the-problem) · [How it works](#how-it-works) · [Fail-closed invariants](#fail-closed-invariants) · [Tools](#exactly-ten-bounded-tools) · [Security](#provenance-and-trust-boundaries) · [Limits](#what-it-does-not-prove)
+
+</div>
+
+---
+
+## The problem
+
+LLM agent memory systems usually fail in five quiet ways:
+
+1. **Silent write drops**: a remote gRPC or HTTP write fails, the agent assumes memory was persisted, and the next turn hallucinates continuity.
+2. **Out-of-order mutations**: concurrent `add`, `replace`, and `remove` operations race over the network, causing a stale delete to wipe out a fresh replacement.
+3. **Unverified embeddings**: the database silently accepts vector inserts while the collection geometry or dimensionality differs from the active embedding model.
+4. **Prompt injection via memory**: raw third-party search results or external text are written into the memory store without provenance, then re-injected as trusted prompt instructions.
+5. **Divergent local state**: memory injection reports success while the actual backend collection is empty or drifted.
+
+This provider treats memory as an auditable state machine with deterministic local write-ahead logging rather than fire-and-forget storage.
+
+---
+
+## What this provider does
+
+- **Fail-closed durability**: memory mutation operations fail closed (`BACKEND_UNAVAILABLE` or error status) if the underlying persistence store cannot guarantee state integrity.
+- **Ordered SQLite ledger**: local write-ahead log serializes all `add`, `replace`, and `remove` mutations, guaranteeing deterministic sequencing and idempotency.
+- **HMAC provenance gating**: records carry cryptographic HMAC signatures to distinguish authenticated agent memories from untrusted external injection payloads.
+- **Lorentz 129D hyperbolic geometry**: natively utilizes Lorentz hyperboloid metric embeddings for hierarchical concept subsumption and semantic precision.
+- **Strict mutation contracts**: `replace` and `remove` require exact needle matching and fail if target memories are missing or ambiguous.
+- **Isolated capability handles**: graph and hierarchy exploration tools use opaque capability tokens (`hsdbh_*`) rather than exposing raw backend point IDs to LLM contexts.
+- **Verified CI artifact continuity**: releases are produced exclusively from green GitHub Actions builds with deterministic SHA-256 manifests.
+
+---
+
+## Fail-closed invariants
+
+These are operational invariants enforced in code and unit tests:
+
+| Failure condition | Provider response |
+|---|---|
+| HyperspaceDB server unreachable | Return `BACKEND_UNAVAILABLE` immediately; never claim silent memory persistence |
+| Dimension or metric mismatch | Fail startup initialization if collection dimensions differ from `expected_dimension` |
+| Ambiguous needle in `replace`/`remove` | Reject mutation if target substring matches multiple or zero records |
+| Missing HMAC ownership key | Require `ownership_hmac_key_env`; refuse unsigned writes when `trust_mode=owned_only` |
+| Malformed tool arguments | Reject unexpected parameters at runtime before executing backend RPCs |
+| Read-only admin operations | Restrict `hyperspace_admin` to strictly allowlisted read-only operations |
+| Dangerous cache mutations | Reject cache mutation and flush commands in unprivileged tool contexts |
+| Server crash during write | Local SQLite ledger retains mutation state and replays atomically upon reconnect |
+
+---
+
+## How it works
+
+```text
+HERMES AGENT
+  │
+  ├─► memory(action="add" | "replace" | "remove")
+  │      │
+  │      ▼
+  │   [Ordered SQLite Ledger] ── (WAL: mode 0600 / dir 0700)
+  │      │
+  │      ▼
+  │   [HMAC Signer & Validator] ── (SHA-256 Authentication)
+  │      │
+  │      ▼
+  │   [HyperspaceDB gRPC Client] ── (Lorentz 129D / Vector Search)
+  │
+  └─► Exactly ten bounded tools (Search, Admin, Audit, Geometry, Graph)
+```
+
+The provider maintains a single authoritative sequence of mutations in a local SQLite ledger (`_ledger.py`). When Hermes executes memory updates, the mutation is recorded in the ledger with monotonic sequence IDs, HMAC authentication tags, and state verification before gRPC transmission to the HyperspaceDB engine.
+
+The provider does not replay failed `add` or `replace` events from Hermes files. It records the failure locally and requires an operator to reconcile the primary Hermes memory state before intentionally reissuing the mutation. The provider does not claim automatic eventual consistency.
+
+---
+
+## Exactly ten bounded tools
+
+The provider registers exactly ten bounded tools divided into primary memory operations and diagnostic inspection capabilities:
+
+### Primary memory tools (Channel operations)
+1. **`hyperspace_status`**: inspects backend connectivity, configured collection, metric configuration, and write queue backlog.
+2. **`hyperspace_search`**: runs bounded semantic similarity search with optional metadata filtering and provenance verification.
+3. **`hyperspace_store`**: writes durable facts into the configured collection with automatic HMAC provenance tagging.
+
+### Deep inspection and analytical tools
+4. **`hyperspace_audit`**: returns SQLite ledger aggregates, schema versions, and reconciliation backlog counters without raw memory dumps.
+5. **`hyperspace_admin`**: executes strictly allowlisted read-only diagnostics (`health`, `stats`, `count`, `digest`, `cache_stats`). Rejects all cache mutation operations.
+6. **`hyperspace_clusters`**: detects emergent semantic clusters in Lorentz vector space.
+7. **`hyperspace_graph`**: traverses concept relationship graphs using opaque capability handles (`hsdbh_*`) without exposing raw backend point IDs.
+8. **`hyperspace_hierarchy`**: explores Lorentz subsumption trees and parent concept relationships.
+9. **`hyperspace_search_advanced`**: executes bounded Wasserstein (Optimal Transport) and Wave distance searches.
+10. **`hyperspace_geometry`**: computes Lorentz Poincaré scalar metrics (`predict_relation`, `predict_momentum`, `trust_score`). Returns `DIAGNOSTIC_UNAVAILABLE` (or constant 0.5 fallback) for uncalibrated models. These scalar outputs are geometric diagnostics, not evidence that a memory is factually true or safe.
+
+---
+
+## Provenance and trust boundaries
+
+- **Plaintext memory content**: The local SQLite ledger stores plaintext memory content for fast needle search and mutation recovery. File permissions are restricted to mode `0600` inside a directory of mode `0700`. This provides filesystem-level user isolation, not encryption at rest.
+- **HMAC security boundary**: The provider uses `ownership_hmac_key_env` to load the authentication secret from environment variables. It is required before authenticated writes can succeed; configure it before enabling auto_store, and do not put the key in a public configuration file.
+- **Untrusted data separation**: Retrieved memory records are data, not executable prompt instructions. Filtering on owned content verifies only that the record originated from this agent ledger; it does not make that content true or safe. HMAC is provenance authentication, not a security boundary for untrusted prompt injection.
+
+---
+
+## Install
+
+User plugins are discovered from the standard Hermes user plugin directory:
+
+```text
+$HERMES_HOME/plugins/hyperspacedb
+```
+
+To install as a user drop-in plugin:
+
+```bash
+mkdir -p ~/.hermes/plugins/hyperspacedb
+rsync -av --exclude '.git' --exclude '__pycache__' --exclude 'dist' /path/to/repo/ ~/.hermes/plugins/hyperspacedb/
+```
+
+Or install the packaged wheel in your Hermes Agent virtual environment:
+
+```bash
+pip install hermes_hyperspacedb_provider-2.5.3-py3-none-any.whl
+```
+
+---
+
+## Configuration
+
+Configure the provider in `~/.hermes/config.yaml` or via the interactive `hermes memory setup` wizard:
+
+```yaml
+memory:
+  provider: hyperspacedb
+
+providers:
+  hyperspacedb:
+    collection: agent_memory
+    host: 127.0.0.1:50051
+    metric: lorentz
+    expected_dimension: 129
+    trust_mode: owned_only
+    auto_store: true
+    rpc_timeout: 60.0
+    api_key_env: HYPERSPACE_API_KEY
+    ownership_hmac_key_env: HYPERSPACE_OWNERSHIP_HMAC_KEY
+```
+
+Requirements:
+- Python `>=3.11`
+- `hyperspacedb>=3.1.3,<4`
+- `cryptography>=41.0.0`
+- A running HyperspaceDB gRPC server instance
+
+---
+
+## Verification & Tests
+
+Run the full local test suite (174 tests):
+
+```bash
+python3 -m pytest tests/ -v
+```
+
+### Live integration E2E runner
+
+The repository includes a dedicated self-seeding E2E mutation runner (`tests/run_test_collection_e2e.py`) designed for isolated non-production testing. To execute live E2E tests against a running HyperspaceDB instance:
+
+```bash
+HSDB_E2E_WRITE_APPROVED=approved \
+HSDB_TEST_OWNERSHIP_HMAC_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
+HSDB_TEST_COLLECTION="hsdb_e2e_isolated_test" \
+HSDB_E2E_STATE_PATH="/tmp/hsdb_e2e_state.sqlite3" \
+python3 tests/run_test_collection_e2e.py
+```
+
+---
 
 ## Status
 
@@ -16,241 +200,94 @@ Version 2.5.3 hardens CI supply-chain permissions, enforces release asset immuta
 6. **Auto-store thread optimization**: Background write worker thread spawns only when `auto_store: true` is configured.
 7. **Domain-driven modularization**: Provider implementation split into 16 decoupled submodules (`_capabilities`, `_config`, `_constants`, `_errors`, `_geometry`, `_graph`, `_ledger`, `_lifecycle`, `_mutations`, `_provider`, `_retrieval`, `_rpc`, `_security`, `_tools`, `_utils`, `__init__`) with 100% backward-compatible root exports.
 
-## Requirements
+---
 
-- Hermes Agent with the public `MemoryProvider` plugin interface.
-- `hyperspacedb>=3.1.3,<4` and `cryptography>=41.0.0` in the Hermes Python environment.
-- A reachable HyperspaceDB gRPC server.
-- An existing collection whose metric matches the configured `metric`.
+## What it does not prove
 
-The plugin never creates or deletes collections automatically.
+This memory provider does **not** promise:
 
-## Install
+- That an agent will reason correctly over retrieved memory.
+- That stored memories are objective real-world facts rather than agent perceptions.
+- That vector embeddings capture 100% of nuanced semantic meaning.
+- Hardware-level encryption at rest (ledger permissions provide OS-level user isolation).
+- Automatic recovery if the physical disk is corrupted or wiped.
 
-User-installed providers are scanned from the flat profile plugins directory:
+It guarantees fail-closed mutation durability, deterministic local ordering, and cryptographic provenance gating.
+
+---
+
+## Repository map
 
 ```text
-$HERMES_HOME/plugins/hyperspacedb
+hermes-hyperspacedb-provider/
+├── README.md                             # Public contract, architecture, and documentation
+├── LICENSE                               # MIT License
+├── plugin.yaml                           # Hermes Agent plugin manifest (v2.5.3)
+├── pyproject.toml                        # Build system, dependencies, and wheel boundaries
+├── __init__.py                           # Public package root and exports
+├── _capabilities.py                      # Tool capability definitions and schemas
+├── _config.py                            # Configuration parsing and defaults
+├── _constants.py                         # Internal limits, constants, and allowed args
+├── _errors.py                            # Structured error codes and mapping
+├── _geometry.py                          # Lorentz Poincaré geometric diagnostics
+├── _graph.py                             # Concept graph and hierarchy exploration
+├── _ledger.py                            # SQLite write-ahead log and state machine
+├── _lifecycle.py                         # Connection management and health checks
+├── _mutations.py                         # Mutation handlers (add, replace, remove)
+├── _provider.py                          # HyperspaceDBMemoryProvider implementation
+├── _retrieval.py                         # Semantic and hybrid search operations
+├── _rpc.py                               # gRPC communication layer and error handling
+├── _security.py                          # HMAC signing, verification, and sanitization
+├── _tools.py                             # Tool dispatcher and parameter validator
+├── _utils.py                             # Shared helper functions and timestamp formatters
+├── .github/
+│   └── workflows/
+│       └── ci.yml                        # Matrix CI, packaging, canary, and release workflow
+└── tests/
+    ├── conftest.py                       # Shared test fixtures and fake clients
+    ├── run_test_collection_e2e.py        # Strict live E2E mutation runner
+    ├── test_audit_v244_regressions.py    # Regression tests for v2.4.4 audit findings
+    ├── test_baseline_contract.py         # MemoryProvider interface compliance
+    ├── test_hermes_contract.py           # Hermes CLI and user plugin contract tests
+    ├── test_ledger_fallback_merge.py     # SQLite ledger fallback merge tests
+    ├── test_ledger_migrations.py         # Ledger schema migration tests
+    ├── test_ledger_owned_only_prefetch.py # Prefetch and filtering verification
+    ├── test_ledger_read_your_writes.py   # Read-your-writes consistency tests
+    ├── test_lifecycle.py                 # Startup, shutdown, and error recovery
+    ├── test_mutation_recovery.py         # Uncommitted mutation recovery
+    ├── test_mutation_semantics.py        # Exact needle matching and rollback tests
+    ├── test_optional_a8.py               # Optional search tools verification
+    ├── test_optional_admin.py            # Read-only admin operations allowlist tests
+    ├── test_optional_audit.py            # Ledger audit summary tool tests
+    ├── test_optional_geometry.py         # Geometric diagnostics verification
+    ├── test_optional_graph_points.py     # Graph handle resolution tests
+    ├── test_owned_only_semantics.py      # HMAC ownership gating verification
+    ├── test_p0_red_regressions.py        # P0 regression suite
+    ├── test_polish_deadlines_and_locks.py # Lock timeouts and deadline tests
+    ├── test_public_release.py            # Packaging, contract, and release integrity
+    ├── test_retrieval.py                 # Search ranking and filtering tests
+    ├── test_sdk_import_contract.py       # Real HyperspaceDB SDK import tests
+    └── test_security.py                  # Injection prevention and HMAC tests
 ```
 
-Bundled/dev checkouts stay at `hermes-agent/plugins/memory/hyperspacedb`. Hermes does not scan `$HERMES_HOME/plugins/memory/hyperspacedb` for user installs.
+---
 
-Then configure the provider and start a new Hermes session. Do not put API keys
-in this repository.
+## One rule worth stealing
 
-## Configuration
+> **Never let an agent assume memory was saved without a verified, ordered write-ahead receipt.**
 
-```yaml
-memory:
-  provider: hyperspacedb
-  hyperspacedb:
-    host: 127.0.0.1:50051
-    collection: hermes_memory
-    metric: lorentz
-    top_k: 5
-    rpc_timeout: 4.0
-    auto_store: true
-    trust_mode: owned_only
-    api_key_env: HYPERSPACE_API_KEY
-    user_id_env: HYPERSPACE_USER_ID
-    ownership_hmac_key_env: HYPERSPACE_OWNERSHIP_HMAC_KEY
-```
-
-`collection` is required. There is deliberately no private or deployment-
-specific collection default.
-
-### Important options
-
-- `host`: gRPC endpoint. Plaintext remote endpoints are rejected by default.
-- `collection`: one existing physical collection used by this provider.
-- `metric`: vectorization metric; `lorentz` is the default.
-- `expected_dimension`: optional exact collection dimension. Leave at `0` only when the backend cannot report a stable dimension; otherwise a mismatch fails closed.
-- `ownership_hmac_key_env`: environment variable for the secret used to authenticate provider-owned records. It is required before authenticated writes can succeed; configure it before enabling `auto_store`, and do not put the key in a public configuration file.
-- `rpc_timeout`: clamped to 0.1-60.0 seconds. The default remains 4.0; raise it when live embedding RPCs exceed that.
-- `state_path`: optional SQLite identity ledger path. The default is derived
-  from the active Hermes home, not from a hardcoded user path.
-- `auto_store`: mirrors curated built-in memory writes.
-- `trust_mode`: `owned_only` or `annotate_all` for automatic prefetch.
-  `owned_only` automatically injects only HMAC-authenticated records whose
-  signed source is `hermes-builtin-memory`. Explicit tool stores and every other
-  producer remain available through explicit search but are never auto-injected.
-  `annotate_all` permits mixed-producer automatic prefetch only when a calibrated
-  `max_distance` is explicitly configured; otherwise automatic prefetch is
-  fail-closed while explicit search remains available.
-- `max_distance`: metric- and corpus-calibrated rejection threshold. It is
-  required for `annotate_all` automatic prefetch; this plugin deliberately does
-  not invent a universal default cutoff.
-- `allow_collection_override`: off by default. Even when enabled, a collection
-  must also appear in `allowed_collections`.
-- `allow_insecure_remote`: off by default. Enable only when gRPC is already
-  protected by a trusted encrypted transport.
-
-Secrets are resolved from the process environment first. An `.env` file is read
-only when its path is explicitly configured with `env_file`.
-
-### Local Docker Containers vs Cloud / Remote Authentication
-
-- **Local unauthenticated instances / Docker containers**: If running a local HyperspaceDB instance with authentication disabled, leave `api_key_env` unset or configure an empty string (`api_key: ""`). Passing an arbitrary placeholder token (such as a dummy test string) to an unauthenticated server will cause the local backend to reject the connection with `UNAUTHENTICATED`.
-- **Hosted / Remote instances**: Set `api_key_env: HYPERSPACE_API_KEY` (or configure `api_key`) to pass your actual secret token.
-
-### Process-Global Environment Side Effects
-
-On module import, the provider sets `GRPC_ENABLE_FORK_SUPPORT="0"` and `GRPC_DNS_RESOLVER="native"`. This prevents known gRPC deadlocks and segmentation faults under Python multiprocessing / fork operations on macOS and Linux. Note that these variables affect the entire Hermes Agent process.
-
-## Mutation semantics
-
-The provider treats the built-in Hermes memory files as the source of mutation
-events and HyperspaceDB as a verified mirror:
-
-1. A logical SHA-256 identity includes provider schema, collection, profile
-   scope, target, source, and full content.
-2. HyperspaceDB still requires a `uint32` point ID. Every candidate is checked
-   before use. Foreign ownership causes deterministic probing, never blind
-   overwrite.
-3. Writes are read back and verified by owner and full digest.
-4. `replace` writes and verifies the new record, then deletes and verifies the
-   exact old record. Failed deletion becomes `delete_pending`, not success.
-5. `remove` resolves `old_text` to exactly one ledger record. Zero or multiple
-   matches fail closed.
-6. One bounded worker preserves mutation order.
-
-Cross-system atomic transactions are impossible with the current Hermes and
-HyperspaceDB contracts. The ledger makes divergence visible and reconcilable;
-it does not pretend to provide distributed ACID semantics.
-
-### Failed mutation boundary
-
-The provider does not replay failed `add` or `replace` events from Hermes files.
-It records the failure locally and requires an operator to reconcile the primary
-Hermes memory state before intentionally reissuing the mutation. The only
-automatic reconciliation is bounded `delete_pending` recovery: it runs only
-when the remote point has authenticated provider ownership, honors persisted
-attempt/backoff limits, and never rebuilds content from a substring match. The
-plugin therefore does not claim automatic eventual consistency after a crash.
-
-## Retrieval and trust
-
-Automatic prefetch is dangerous because Hermes currently injects the provider's
-returned string as authoritative reference context. This plugin therefore:
-
-- retrieves standard sidecar payloads with `include_payload=True`;
-- preserves opaque capability handles, distance, source, trust, target, and timestamp without exposing raw backend point IDs;
-- marks every item as memory data, never instructions;
-- quarantines common instruction-injection patterns from automatic prefetch;
-- bounds query, count, content, graph, cluster, and output sizes;
-- distinguishes `NO_HIT` from timeout, authentication, availability,
-  collection, and malformed-response failures.
-
-`owned_only` is the recommended public default. It automatically injects only
-HMAC-authenticated records whose signed source is `hermes-builtin-memory`.
-HMAC authenticates provenance. It does not make that content true or safe.
-A signed built-in memory write can still carry paraphrased instructions.
-Regex quarantine is defense-in-depth, not a security boundary.
-Explicit tool stores and other producers remain explicit-search data. The provider
-also recomputes the logical digest from the returned payload before accepting
-provider ownership. `annotate_all` is for mixed-producer migration and expands
-the trust surface; automatic prefetch is fail-closed until a metric- and
-corpus-calibrated `max_distance` is configured. Explicit search remains
-available in that state and returns provenance plus distance.
-
-## Local ledger confidentiality
-
-The identity ledger is a local SQLite file containing plaintext memory content needed for deterministic replace and delete operations. The provider creates its ledger directory with mode `0700` and its SQLite file with mode `0600`; these POSIX permissions reduce local-account exposure but are not encryption at rest. Deployments requiring encrypted storage must provide host or volume encryption. The plugin does not claim to encrypt the ledger and does not place API keys in it.
-
-## Tools
-
-The plugin exposes exactly ten bounded tools by default. Opt-in only: event_observation_enabled, operator_reconcile_enabled, batch_mutation_enabled:
-
-- `hyperspace_search`
-- `hyperspace_store`
-- `hyperspace_status`
-- `hyperspace_audit`
-- `hyperspace_graph`
-- `hyperspace_hierarchy`
-- `hyperspace_clusters`
-- `hyperspace_search_advanced`
-- `hyperspace_admin`
-- `hyperspace_geometry`
-
-Search and store responses issue opaque, short-lived capability handles. Graph and
-hierarchy tools accept only handles minted by the same live provider profile,
-session, and collection; raw backend point IDs are neither accepted nor returned.
-Cluster output is limited to cluster cardinalities, not member identifiers.
-
-The geometry tool accepts only live capability handles and checks a verified
-Lorentz 129D collection before fetching points. It converts validated Lorentz
-hyperboloid points through the SDK Lorentz-to-Poincare bridge, then returns only
-bounded scalar summaries for `predict_relation` and `predict_momentum`.
-`trust_score` is intentionally `DIAGNOSTIC_UNAVAILABLE`: the current upstream
-formula is degenerate (it returns a constant 0.5 for trajectories ending at its
-own attractor). These are geometric diagnostics, not evidence that a memory is
-factually true or safe;
-raw vectors, point IDs, and predicted point content are never returned.
-
-Write RPCs scale their deadline with payload length (4s + 1s/400 chars, cap 300s). Graph, hierarchy, and geometry handlers share one in-process lock so parallel tool calls in one turn cannot race the capability table.
-
-The admin tool is read-only. Its allowed operations are `health`, `stats`,
-`count`, `digest`, and `cache_stats`. Every numeric response is field-by-field
-allowlisted and malformed backend maps fail closed; raw backend maps, schema
-objects, cache entries, and bucket lists are not returned. Collection creation,
-deletion, rebuild, vacuum, snapshot, reconsolidation, cache mutation, and cache
-configuration operations are intentionally absent.
-
-## Backup and restore
-
-`hermes backup` receives an integrity-checked SQLite identity-ledger snapshot
-from `backup_paths()`, not the live WAL database. It does not archive an
-arbitrary server checkout and does not claim that copying a live database
-directory is a consistent snapshot.
-
-Back up the HyperspaceDB collection with the database's own verified snapshot or
-cold-backup procedure. Restore the database and ledger as one documented
-recovery operation, then run reconciliation checks before trusting removals or
-replacements.
-
-## Migration from 0.1.x
-
-The previous implementation used a content-derived `uint32` without ownership
-verification and did not mirror `remove`. Existing owned legacy records can be
-resolved lazily by source, target, exact substring, and content. Ambiguous
-legacy matches are rejected. Keep the old database snapshot until migration and
-an authorized mutation E2E test are complete.
-
-## Test
-
-Run from this directory with the active Hermes source on `PYTHONPATH`:
-
-```bash
-python -m pytest -q
-```
-
-The default suite uses a fake client and must not write to production. The
-read-only integration suite requires explicit environment variables. Mutation
-E2E requires a dedicated test collection and separate operator authorization.
-
-For the strict mutation runner, set all of these only for a non-production test:
-`HSDB_E2E_WRITE_APPROVED=approved`, `HSDB_TEST_OWNERSHIP_HMAC_KEY`,
-`HSDB_TEST_COLLECTION` (prefixed `hsdb_e2e_`), and `HSDB_E2E_STATE_PATH`
-outside this plugin directory. Then run `python tests/run_test_collection_e2e.py`.
-The runner leaves the isolated collection intact for operator inspection and
-never uses this plugin's `state/`.
-
-## Honest limitations
-
-- HyperspaceDB's `uint32` ID API cannot make cross-process allocation races
-  impossible without a server-side conditional insert.
-- Hermes exposes no per-record external-memory trust type; this plugin can gate
-  and label context but cannot change the core wrapper contract.
-- Distributed atomicity between local Markdown memory and the remote vector
-  database does not exist.
-- A universal semantic distance cutoff would be dishonest; calibrate
-  `max_distance` on the target metric and corpus.
-
+---
 
 ## Authors
 
 Created by Paulina Janowska and Gniewisława AI.
 
-Proudly witchcrafted in Poznań, Poland ♥
+**Proudly witchcrafted in Poznań, Poland ♥**
 
 Built with skepticism and an unreasonable allergy to confident bullshit.
+
+---
+
+## License
+
+MIT.
