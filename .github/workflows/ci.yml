@@ -3,10 +3,12 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -67,6 +69,25 @@ jobs:
           python -m pip install dist/*.whl
           python -c "import hermes_hyperspacedb_provider as p; assert hasattr(p, 'HyperspaceDBMemoryProvider')"
           python -c "from hermes_hyperspacedb_provider import register, HyperspaceDBMemoryProvider"
+
+      - name: Verify wheel purity
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          for w in glob.glob("dist/*.whl"):
+              with zipfile.ZipFile(w) as z:
+                  names = z.namelist()
+                  assert not any("/tests/" in x or x.startswith("tests/") for x in names), f"Found tests in {w}"
+                  assert not any("/_deferred_events/" in x or x.startswith("_deferred_events/") for x in names), f"Found deferred in {w}"
+          print("Wheel purity verified: zero test files or deferred events packaged.")
+          PY
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-packages
+          path: dist/
+          if-no-files-found: error
 
   user-install:
     runs-on: ubuntu-latest
@@ -178,3 +199,36 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/.ci/hermes-agent
           PYTHONDONTWRITEBYTECODE: "1"
         run: python -m pytest -q tests --ignore=tests/run_test_collection_e2e.py -p no:cacheprovider
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [test, packaging, user-install, sdk-import, hermes-canary]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-packages
+          path: dist
+
+      - name: Generate SHA256 Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          echo "=== ARTIFACT CHECKSUMS ==="
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG_NAME" dist/* \
+            --title "$TAG_NAME: Verified Release" \
+            --generate-notes \
+            --latest || gh release upload "$TAG_NAME" dist/* --clobber

@@ -152,6 +152,8 @@ def test_readme_discloses_no_automatic_mutation_replay():
 
 
 def test_runtime_artifacts_are_ignored_without_deleting_them():
+    if not (ROOT / ".git").exists() and not (ROOT.parent / ".git").exists():
+        pytest.skip("plugin root is not a git repository")
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
     assert "/state/" in ignored
     assert "*.sqlite3" in ignored
@@ -410,3 +412,19 @@ def test_release_ships_github_actions_ci():
     assert "HSDB_REQUIRE_REAL_SDK" in text
     assert "hyperspacedb==3.1.3" in text
     assert "$HERMES_HOME/plugins/hyperspacedb" in text or "plugins/hyperspacedb" in text
+
+
+def test_wheel_excludes_test_suites_and_deferred_events():
+    dist_dir = ROOT / "dist"
+    if not dist_dir.is_dir():
+        pytest.skip("no dist/ directory built in this checkout")
+    wheels = list(dist_dir.glob("*.whl"))
+    if not wheels:
+        pytest.skip("no wheel artifacts in dist/")
+    import zipfile
+    for wheel in wheels:
+        with zipfile.ZipFile(wheel) as z:
+            names = z.namelist()
+            assert not any("/tests/" in name or name.startswith("tests/") for name in names), f"Wheel contains test files: {wheel}"
+            assert not any("/_deferred_events/" in name or name.startswith("_deferred_events/") for name in names), f"Wheel contains deferred events: {wheel}"
+

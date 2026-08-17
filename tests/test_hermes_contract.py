@@ -41,7 +41,19 @@ def test_sync_turn_is_explicit_noop(provider, fake_client):
 
 
 def test_setup_discovery_shows_unconfigured_hyperspace_provider(monkeypatch, tmp_path):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "isolated-home"))
+    hermes_home = tmp_path / "isolated-home"
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    user_plugin_dir = hermes_home / "plugins" / "hyperspacedb"
+    user_plugin_dir.mkdir(parents=True, exist_ok=True)
+    import shutil
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    for item in root.iterdir():
+        if item.name not in (".git", ".github", "__pycache__", ".pytest_cache", "dist", "build", "state"):
+            if item.is_dir():
+                shutil.copytree(item, user_plugin_dir / item.name)
+            else:
+                shutil.copy2(item, user_plugin_dir / item.name)
     from hermes_cli.memory_setup import _get_available_providers
     providers = {name: provider for name, _hint, provider in _get_available_providers()}
     assert "hyperspacedb" in providers
@@ -396,3 +408,26 @@ def test_status_exposes_collection_contract_verification(provider, fake_client):
     provider._configured_metric = "cosine"
     provider.initialize("invalid-contract")
     assert provider.status_snapshot()["collection_contract_verified"] is False
+
+
+def test_save_config_persists_to_canonical_user_plugin_directory(provider, tmp_path):
+    hermes_home = tmp_path / "hermes_home"
+    provider.save_config({"collection": "test_mem"}, hermes_home=str(hermes_home))
+    expected_path = hermes_home / "plugins" / "hyperspacedb" / "plugin.yaml"
+    unexpected_path = hermes_home / "plugins" / "memory" / "hyperspacedb" / "plugin.yaml"
+    assert expected_path.is_file()
+    assert not unexpected_path.exists()
+    content = expected_path.read_text(encoding="utf-8")
+    assert "test_mem" in content
+
+
+def test_auto_store_disabled_does_not_spawn_worker_thread(plugin, fake_client, tmp_path):
+    prov = plugin.HyperspaceDBMemoryProvider()
+    prov._client = fake_client
+    prov._collection = "test_col"
+    prov._metric = "lorentz"
+    prov._auto_store = False
+    prov._state_path = tmp_path / "test_ledger.sqlite3"
+    prov._ownership_hmac_key = b"test_key_0123456789abcdef01234567"
+    prov.initialize("test-session")
+    assert prov._worker is None

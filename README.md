@@ -7,12 +7,13 @@ bounded memory tools, and keeps a local identity ledger so `add`, `replace`, and
 
 ## Status
 
-Version 2.5.1 resolves packaging hygiene, dependency closure, and config persistence contracts:
-1. **Dependency closure (`cryptography`)**: Declares `cryptography>=41.0.0` as an explicit package dependency to prevent downstream `ModuleNotFoundError` during HyperspaceDB client imports in clean environments.
-2. **Clean wheel distribution**: Configures explicit package boundaries in `pyproject.toml` ensuring the binary wheel contains only production provider code and `plugin.yaml` (excluding `tests/`, `_deferred_events/`, and internal workflow artifacts).
-3. **`save_config()` user path alignment**: Writes updated configuration to the canonical user-plugin path (`$HERMES_HOME/plugins/hyperspacedb/plugin.yaml`).
-4. **Auto-store thread optimization**: Background write worker thread spawns only when `auto_store: true` is configured.
-5. **Domain-driven modularization**: Provider implementation split into 16 decoupled submodules (`_capabilities`, `_config`, `_constants`, `_errors`, `_geometry`, `_graph`, `_ledger`, `_lifecycle`, `_mutations`, `_provider`, `_retrieval`, `_rpc`, `_security`, `_tools`, `_utils`, `__init__`) with 100% backward-compatible root exports.
+Version 2.5.2 resolves packaging hygiene, dependency closure, CI release attestation, and config persistence contracts:
+1. **CI Release Attestation**: Automated GitHub Actions workflow builds, verifies wheel purity, tests cross-matrix dependencies, and directly uploads the exact tested artifacts with `SHA256SUMS.txt` upon tag creation.
+2. **Dependency closure (`cryptography`)**: Declares `cryptography>=41.0.0` as an explicit package dependency to prevent downstream `ModuleNotFoundError` during HyperspaceDB client imports in clean environments.
+3. **Clean wheel distribution**: Configures explicit package boundaries in `pyproject.toml` ensuring the binary wheel contains only production provider code and `plugin.yaml` (excluding `tests/`, `_deferred_events/`, and internal workflow artifacts).
+4. **`save_config()` user path alignment**: Writes updated configuration to the canonical user-plugin path (`$HERMES_HOME/plugins/hyperspacedb/plugin.yaml`).
+5. **Auto-store thread optimization**: Background write worker thread spawns only when `auto_store: true` is configured.
+6. **Domain-driven modularization**: Provider implementation split into 16 decoupled submodules (`_capabilities`, `_config`, `_constants`, `_errors`, `_geometry`, `_graph`, `_ledger`, `_lifecycle`, `_mutations`, `_provider`, `_retrieval`, `_rpc`, `_security`, `_tools`, `_utils`, `__init__`) with 100% backward-compatible root exports.
 
 ## Requirements
 
@@ -228,10 +229,10 @@ E2E requires a dedicated test collection and separate operator authorization.
 
 For the strict mutation runner, set all of these only for a non-production test:
 `HSDB_E2E_WRITE_APPROVED=approved`, `HSDB_TEST_OWNERSHIP_HMAC_KEY`,
-`HSDB_TEST_SOURCE_COLLECTION`, `HSDB_TEST_COLLECTION` (prefixed `hsdb_e2e_`),
-and `HSDB_E2E_STATE_PATH` outside this plugin directory. Then run
-`python tests/run_test_collection_e2e.py`. The runner leaves the isolated
-collection intact for operator inspection and never uses this plugin's `state/`.
+`HSDB_TEST_COLLECTION` (prefixed `hsdb_e2e_`), and `HSDB_E2E_STATE_PATH`
+outside this plugin directory. Then run `python tests/run_test_collection_e2e.py`.
+The runner leaves the isolated collection intact for operator inspection and
+never uses this plugin's `state/`.
 
 ## Honest limitations
 
