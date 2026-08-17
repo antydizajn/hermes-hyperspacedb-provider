@@ -45,6 +45,26 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python -m pytest -q tests --ignore=tests/run_test_collection_e2e.py -p no:cacheprovider
 
+  packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build deps
+        run: python -m pip install --upgrade pip && pip install build wheel setuptools
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Test wheel installation
+        run: python -m pip install dist/*.whl
+
   user-install:
     runs-on: ubuntu-latest
     steps:
@@ -109,12 +129,49 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install real SDK
-        run: python -m pip install --upgrade pip && pip install pytest pyyaml cryptography "${{ matrix.constraint }}"
+      - name: Install real HyperspaceDB SDK constraint
+        run: python -m pip install --upgrade pip && pip install "${{ matrix.constraint }}" pytest pyyaml
 
-      - name: Prove import is not the repo stub
+      - name: Install plugin into bundled Hermes memory path
+        run: |
+          mkdir -p .ci/hermes-agent/plugins/memory/hyperspacedb
+          rsync -a --exclude .git --exclude .github --exclude .ci ./ .ci/hermes-agent/plugins/memory/hyperspacedb/
+
+      - name: Real SDK import verification
         env:
           PYTHONPATH: ${{ github.workspace }}/.ci/hermes-agent
           HSDB_REQUIRE_REAL_SDK: "1"
-          PYTHONDONTWRITEBYTECODE: "1"
         run: python -m pytest -q tests/test_sdk_import_contract.py -p no:cacheprovider
+
+  hermes-canary:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Checkout latest Hermes Agent (main canary)
+        uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: main
+          path: .ci/hermes-agent
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test deps
+        run: python -m pip install --upgrade pip && pip install pytest pyyaml
+
+      - name: Install plugin into bundled Hermes memory path
+        run: |
+          mkdir -p .ci/hermes-agent/plugins/memory/hyperspacedb
+          rsync -a --exclude .git --exclude .github --exclude .ci ./ .ci/hermes-agent/plugins/memory/hyperspacedb/
+
+      - name: Upstream canary unit and contract tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.ci/hermes-agent
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pytest -q tests --ignore=tests/run_test_collection_e2e.py -p no:cacheprovider

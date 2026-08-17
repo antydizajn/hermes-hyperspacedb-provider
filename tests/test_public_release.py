@@ -51,22 +51,16 @@ def _git_repository_root() -> "Path | None":
     except subprocess.CalledProcessError:
         return None
     repo = Path(output.strip()).resolve()
-    probe = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", "--", "memory/hyperspacedb/__init__.py"],
-        cwd=repo, check=False, capture_output=True,
-    )
-    # Accept either the exact plugin path or a generic probe; the meaningful
-    # signal is that "memory/hyperspacedb/__init__.py" is tracked at repo root.
-    if probe.returncode != 0:
-        # Some layouts track the plugin at plugins/memory/hyperspacedb; probe both.
-        probe_alt = subprocess.run(
-            ["git", "ls-files", "--error-unmatch", "--",
-             "plugins/memory/hyperspacedb/__init__.py"],
+    # Check if tracked as standalone root plugin (__init__.py at repo root),
+    # or nested at memory/hyperspacedb or plugins/memory/hyperspacedb.
+    for rel_path in ["__init__.py", "memory/hyperspacedb/__init__.py", "plugins/memory/hyperspacedb/__init__.py"]:
+        probe = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", rel_path],
             cwd=repo, check=False, capture_output=True,
         )
-        if probe_alt.returncode != 0:
-            return None
-    return repo
+        if probe.returncode == 0:
+            return repo
+    return None
 
 
 def _repository_root() -> Path:
@@ -263,12 +257,18 @@ def test_readme_documents_read_only_admin_allowlist():
 
 def test_manifest_version_and_dependency_contract_match_readme():
     manifest = yaml.safe_load((ROOT / "plugin.yaml").read_text(encoding="utf-8"))
-    assert re.fullmatch(r"\d+\.\d+\.\d+", str(manifest["version"]))
+    version = str(manifest["version"])
+    assert re.fullmatch(r"\d+\.\d+\.\d+", version)
     dependency = manifest["pip_dependencies"][0]
     assert dependency.startswith("hyperspacedb>=") and ",<" in dependency
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert f"Version {manifest['version']}" in text
+    assert f"Version {version}" in text
     assert dependency in text
+
+    # Enforce pyproject.toml version and python requirement consistency
+    pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'version = "{version}"' in pyproject_text
+    assert 'requires-python = ">=3.11"' in pyproject_text
 
 
 def test_e2e_runner_requires_explicit_approval_and_test_hmac_before_client_creation():

@@ -91,6 +91,10 @@ only when its path is explicitly configured with `env_file`.
 - **Local unauthenticated instances / Docker containers**: If running a local HyperspaceDB instance with authentication disabled, leave `api_key_env` unset or configure an empty string (`api_key: ""`). Passing an arbitrary placeholder token (such as a dummy test string) to an unauthenticated server will cause the local backend to reject the connection with `UNAUTHENTICATED`.
 - **Hosted / Remote instances**: Set `api_key_env: HYPERSPACE_API_KEY` (or configure `api_key`) to pass your actual secret token.
 
+### Process-Global Environment Side Effects
+
+On module import, the provider sets `GRPC_ENABLE_FORK_SUPPORT="0"` and `GRPC_DNS_RESOLVER="native"`. This prevents known gRPC deadlocks and segmentation faults under Python multiprocessing / fork operations on macOS and Linux. Note that these variables affect the entire Hermes Agent process.
+
 ## Mutation semantics
 
 The provider treats the built-in Hermes memory files as the source of mutation

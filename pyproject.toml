@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-hyperspacedb-provider"
-version = "0.2.0"
+version = "2.4.4"
 description = "Fail-closed HyperspaceDB MemoryProvider for Hermes Agent"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = ["hyperspacedb>=3.1.3,<4"]
 
 [project.optional-dependencies]
@@ -18,4 +18,4 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
