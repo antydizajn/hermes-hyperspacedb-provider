@@ -38,7 +38,11 @@ def isolate_hyperspace_process_env(monkeypatch):
 def load_plugin():
     name = "hermes_hyperspacedb_plugin_under_test"
     sys.modules.pop(name, None)
-    spec = importlib.util.spec_from_file_location(name, PLUGIN_ROOT / "__init__.py")
+    spec = importlib.util.spec_from_file_location(
+        name,
+        PLUGIN_ROOT / "__init__.py",
+        submodule_search_locations=[str(PLUGIN_ROOT)],
+    )
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     assert spec.loader is not None

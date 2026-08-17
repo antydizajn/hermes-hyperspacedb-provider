@@ -1,6 +1,7 @@
 from pathlib import Path
 
-SOURCE = (Path(__file__).resolve().parents[1] / "__init__.py").read_text(encoding="utf-8")
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = "\n".join(p.read_text(encoding="utf-8") for p in sorted(ROOT.glob("*.py")))
 
 
 def test_module_starts_with_valid_python_not_grpc_noise():

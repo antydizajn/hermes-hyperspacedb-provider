@@ -51,7 +51,11 @@ def require_external_state_path(value: str) -> str:
 
 def load_provider_module():
     name = "hsdb_plugin_e2e"
-    spec = importlib.util.spec_from_file_location(name, ROOT / "__init__.py")
+    spec = importlib.util.spec_from_file_location(
+        name,
+        ROOT / "__init__.py",
+        submodule_search_locations=[str(ROOT)],
+    )
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     assert spec.loader is not None

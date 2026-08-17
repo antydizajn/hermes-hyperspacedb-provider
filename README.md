@@ -7,12 +7,14 @@ bounded memory tools, and keeps a local identity ledger so `add`, `replace`, and
 
 ## Status
 
-Version 2.4.4 hardens fail-closed semantics across retrieval, ledger scoping, worker lifecycle, graph sanitization, and authentication:
-1. **Vector distance fail-closed**: When `max_distance` is set, vector hits with `distance is None` are rejected, and undistanced vector results in `annotate_all` are denied `allowed_for_prefetch`.
-2. **Ledger reconciliation scoping**: `records_with_status()` enforces mandatory `profile_scope` filtering across all pending insert/delete reconciliation loops.
-3. **Verified worker startup**: Background auto-store writer thread spawns only AFTER backend health probe and collection metric/dimension contracts are verified.
-4. **Graph sanitizer allowlist**: Strips raw internal backend keys (`vector`, `embedding`, `point_id`, `_hs_digest`, etc.) from all graph, hierarchy, and cluster tool responses.
-5. **Local vs Cloud authentication clarity**: Explains credential expectations and surfaces actionable guidance when a local unauthenticated container receives an unexpected API key.
+Version 2.5.0 modularizes internal architecture and hardens package release hygiene:
+1. **Modular package architecture**: Refactors internal single-file monolith into clean, dedicated modules (`constants`, `errors`, `utils`, `security`, `config`, `rpc`, `ledger`, `provider`) with 100% backward-compatible root exports.
+2. **Version consistency & packaging verification**: Aligns version contracts across `plugin.yaml`, `pyproject.toml`, and `README.md`, verified via wheel builds and CI packaging tests.
+3. **Vector distance fail-closed**: When `max_distance` is set, vector hits with `distance is None` are rejected, and undistanced vector results in `annotate_all` are denied `allowed_for_prefetch`.
+4. **Ledger reconciliation scoping**: `records_with_status()` enforces mandatory `profile_scope` filtering across all pending insert/delete reconciliation loops.
+5. **Verified worker startup**: Background auto-store writer thread spawns only AFTER backend health probe and collection metric/dimension contracts are verified.
+6. **Graph sanitizer allowlist**: Strips raw internal backend keys (`vector`, `embedding`, `point_id`, `_hs_digest`, etc.) from all graph, hierarchy, and cluster tool responses.
+7. **Local vs Cloud authentication clarity**: Explains credential expectations and surfaces actionable guidance when a local unauthenticated container receives an unexpected API key.
 
 ## Requirements
 
