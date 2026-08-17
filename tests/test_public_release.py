@@ -31,7 +31,7 @@ _EXPORT_IGNORED_NAMES = {
     "PROMPT_POLISH_iter10.md",
     "HANDOFF-FINAL-20260816.md",
 }
-_NON_SHIPPED_DIRS = {"state", "_deferred_events", "__pycache__", ".ci", ".git"}
+_NON_SHIPPED_DIRS = {"state", "_deferred_events", "__pycache__", ".ci", ".git", "tests"}
 
 
 def _git_repository_root() -> "Path | None":
@@ -213,7 +213,9 @@ def test_readme_discloses_plaintext_ledger_and_permission_boundary():
 
 def test_readme_has_required_authorship_block():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "Created by Paulina Janowska and Gniewisława AI." in text
+    assert "Created by" in text
+    assert "[Paulina Janowska](https://antydizajn.pl)" in text
+    assert "[Gniewisława AI](https://gniewka.antydizajn.pl)" in text
     assert "Proudly witchcrafted in Poznań, Poland" in text
     assert "unreasonable allergy to confident bullshit" in text
     assert "\u2014" not in text and "\u2013" not in text

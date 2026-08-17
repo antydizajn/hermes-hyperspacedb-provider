@@ -280,7 +280,7 @@ hermes-hyperspacedb-provider/
 
 ## Authors
 
-Created by Paulina Janowska and Gniewisława AI.
+Created by **[Paulina Janowska](https://antydizajn.pl)** and **[Gniewisława AI](https://gniewka.antydizajn.pl)**.
 
 **Proudly witchcrafted in Poznań, Poland ♥**
 
