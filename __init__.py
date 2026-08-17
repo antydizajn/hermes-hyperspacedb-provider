@@ -429,7 +429,11 @@ def _classify_exception(exc: BaseException) -> ProviderError:
     if "DEADLINE_EXCEEDED" in code_name or "timeout" in text or "timed out" in text:
         return BackendTimeout("HyperspaceDB RPC deadline exceeded")
     if "UNAUTHENTICATED" in code_name or "PERMISSION_DENIED" in code_name or "unauth" in text:
-        return BackendAuthError("HyperspaceDB rejected credentials")
+        return BackendAuthError(
+            "HyperspaceDB rejected credentials (UNAUTHENTICATED/PERMISSION_DENIED). "
+            "Note: local HyperspaceDB containers running without authentication expect an empty API key (api_key: \"\" or unset api_key_env); "
+            "remote/cloud servers require a valid HYPERSPACE_API_KEY."
+        )
     if "NOT_FOUND" in code_name or "not found" in text:
         return CollectionNotFound("Configured HyperspaceDB collection was not found")
     if "UNAVAILABLE" in code_name or "connection" in text or "refused" in text:
@@ -784,14 +788,23 @@ class IdentityLedger:
             rows = self._db.execute(sql, params).fetchall()
         return [self._row(row).as_dict() for row in rows]
 
-    def records_with_status(self, status: str, limit: int) -> List[LedgerRecord]:
+    def records_with_status(self, status: str, limit: int, profile_scope: Optional[str] = None) -> List[LedgerRecord]:
         bounded = max(1, min(int(limit), 128))
         with self._lock:
-            rows = self._db.execute(
-                "SELECT digest, external_id, profile_scope, target, source, "
-                "content, status, error, updated_at FROM records WHERE status=? "
-                "ORDER BY updated_at, external_id LIMIT ?", (status, bounded),
-            ).fetchall()
+            if profile_scope is not None:
+                rows = self._db.execute(
+                    "SELECT digest, external_id, profile_scope, target, source, "
+                    "content, status, error, updated_at FROM records WHERE status=? AND profile_scope=? "
+                    "ORDER BY updated_at, external_id LIMIT ?",
+                    (status, str(profile_scope), bounded),
+                ).fetchall()
+            else:
+                rows = self._db.execute(
+                    "SELECT digest, external_id, profile_scope, target, source, "
+                    "content, status, error, updated_at FROM records WHERE status=? "
+                    "ORDER BY updated_at, external_id LIMIT ?",
+                    (status, bounded),
+                ).fetchall()
         return [self._row(row) for row in rows]
 
     def reconciliation_due(self, digest: str, max_attempts: int, now: Optional[float] = None) -> bool:
@@ -1440,18 +1453,18 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         self._shutdown = False
         self._collection_contract_verified = False
         self._stop_event.clear()
-        if self._auto_store and (self._worker is None or not self._worker.is_alive()):
-            self._worker = threading.Thread(
-                target=self._write_worker,
-                name="hsdb-ordered-memory-writer",
-                daemon=True,
-            )
-            self._worker.start()
         try:
             self._probe_health()
             stats = self._call("get_collection_stats", self._collection)
             self._verify_collection_contract(stats)
             self._collection_contract_verified = True
+            if self._auto_store and (self._worker is None or not self._worker.is_alive()):
+                self._worker = threading.Thread(
+                    target=self._write_worker,
+                    name="hsdb-ordered-memory-writer",
+                    daemon=True,
+                )
+                self._worker.start()
             if self._event_observation_enabled:
                 self._start_event_observer()
             if self._ownership_hmac_key and _coerce_bool(self._config.get("reconcile_on_initialize"), True):
@@ -1571,7 +1584,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             if not content:
                 continue
             distance = _record_distance(raw)
-            if self._max_distance is not None and distance is not None and distance > self._max_distance:
+            if self._max_distance is not None and (distance is None or distance > self._max_distance):
                 continue
             digest = hashlib.sha256(content.encode("utf-8", "replace")).hexdigest()
             if digest in seen:
@@ -1584,7 +1597,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             if self._trust_mode == "owned_only":
                 allowed = authenticated_owner and source in _PREFETCH_OWNED_SOURCES
             elif self._trust_mode == "annotate_all":
-                allowed = True
+                allowed = distance is not None and (self._max_distance is None or distance <= self._max_distance)
             else:
                 raise ConfigurationError("trust_mode must be owned_only or annotate_all")
             normalized.append({
@@ -1721,14 +1734,20 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         return self._resolve_point_capabilities([handle], collection)[0]
 
     def _sanitize_graph_result(self, value: Any, collection: str) -> Any:
-        """Replace backend graph slots in an SDK response with scoped capabilities."""
+        """Replace backend graph slots in an SDK response with scoped capabilities and filter raw internals."""
         if isinstance(value, list):
             return [self._sanitize_graph_result(item, collection) for item in value]
         if not isinstance(value, dict):
             return value
+        blocked_raw_keys = {
+            "vector", "vectors", "embedding", "embeddings", "raw_vector",
+            "point_id", "raw_point_id", "_hs_digest", "_hs_owner", "_hs_signature"
+        }
         sanitized: Dict[str, Any] = {}
         for key, item in value.items():
             normalized_key = str(key)
+            if normalized_key in blocked_raw_keys:
+                continue
             id_key_to_handle_key = {
                 "id": "handle",
                 "start_id": "start_handle",
@@ -2129,8 +2148,8 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         result = {"attempted": 0, "active": 0, "conflicts": 0, "deferred": 0}
         if not self._ownership_hmac_key:
             return result
-        records = self._ledger.records_with_status("inserting", limit)
-        records += self._ledger.records_with_status("retry_pending", limit)
+        records = self._ledger.records_with_status("inserting", limit, profile_scope=self._profile_scope)
+        records += self._ledger.records_with_status("retry_pending", limit, profile_scope=self._profile_scope)
         for record in records[:max(1, min(int(limit), 128))]:
             result["attempted"] += 1
             try:
@@ -2160,7 +2179,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             return {"attempted": 0, "removed": 0, "conflicts": 0, "deferred": 0}
         result = {"attempted": 0, "removed": 0, "conflicts": 0, "deferred": 0}
         deadline = None if budget_seconds is None else time.monotonic() + max(0.1, float(budget_seconds))
-        for record in self._ledger.records_with_status("delete_pending", limit):
+        for record in self._ledger.records_with_status("delete_pending", limit, profile_scope=self._profile_scope):
             if deadline is not None and time.monotonic() >= deadline:
                 result["deferred"] += 1
                 break
@@ -2424,7 +2443,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         if operation not in {"dry_run", "apply"}:
             return _json_error("INVALID_ARGUMENT", "operation must be dry_run or apply")
         limit = _bounded_int(args.get("limit"), self._reconcile_limit, 1, 32)
-        pending = list(self._ledger.records_with_status("delete_pending", limit))
+        pending = list(self._ledger.records_with_status("delete_pending", limit, profile_scope=self._profile_scope))
         would = len(pending) if self._ownership_hmac_key else 0
         if operation == "dry_run":
             return self._tool_json({

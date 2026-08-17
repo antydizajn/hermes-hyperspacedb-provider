@@ -7,10 +7,12 @@ bounded memory tools, and keeps a local identity ledger so `add`, `replace`, and
 
 ## Status
 
-Version 2.4.3 keeps vector hits ahead of ledger extras and keeps undistanced ledger rows out of annotate_all prefetch when max_distance is set. Version 2.4.2 applies the owned_only prefetch gate and profile_scope filter to ledger fallback hits. Version 2.4.2 also returns a just-written ledger record when vector search misses the same substring. also scales write RPC deadlines with payload length (4s + 1s/400 chars, cap 300s) and serializes graph, hierarchy, and geometry so parallel tool calls in one turn cannot race the capability table. Version 2.4.2 hardens the collection contract: Lorentz inference requires the
-hyperboloid invariant, session switch purges capabilities, and setup marks HMAC
-and API keys as secrets. A deployment is not E2E verified until its operator
-runs an authorized add/replace/remove probe against a dedicated test collection.
+Version 2.4.4 hardens fail-closed semantics across retrieval, ledger scoping, worker lifecycle, graph sanitization, and authentication:
+1. **Vector distance fail-closed**: When `max_distance` is set, vector hits with `distance is None` are rejected, and undistanced vector results in `annotate_all` are denied `allowed_for_prefetch`.
+2. **Ledger reconciliation scoping**: `records_with_status()` enforces mandatory `profile_scope` filtering across all pending insert/delete reconciliation loops.
+3. **Verified worker startup**: Background auto-store writer thread spawns only AFTER backend health probe and collection metric/dimension contracts are verified.
+4. **Graph sanitizer allowlist**: Strips raw internal backend keys (`vector`, `embedding`, `point_id`, `_hs_digest`, etc.) from all graph, hierarchy, and cluster tool responses.
+5. **Local vs Cloud authentication clarity**: Explains credential expectations and surfaces actionable guidance when a local unauthenticated container receives an unexpected API key.
 
 ## Requirements
 
@@ -83,6 +85,11 @@ specific collection default.
 
 Secrets are resolved from the process environment first. An `.env` file is read
 only when its path is explicitly configured with `env_file`.
+
+### Local Docker Containers vs Cloud / Remote Authentication
+
+- **Local unauthenticated instances / Docker containers**: If running a local HyperspaceDB instance with authentication disabled, leave `api_key_env` unset or configure an empty string (`api_key: ""`). Passing an arbitrary placeholder token (such as a dummy test string) to an unauthenticated server will cause the local backend to reject the connection with `UNAUTHENTICATED`.
+- **Hosted / Remote instances**: Set `api_key_env: HYPERSPACE_API_KEY` (or configure `api_key`) to pass your actual secret token.
 
 ## Mutation semantics
 
