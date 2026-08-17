@@ -677,7 +677,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
                 logger.debug("Startup insert reconciliation failed", exc_info=True)
         if self._event_observation_enabled:
             self._start_event_observer()
-        if self._worker is None or not self._worker.is_alive():
+        if self._auto_store and (self._worker is None or not self._worker.is_alive()):
             self._stop_event.clear()
             self._worker = threading.Thread(
                 target=self._write_worker,
@@ -721,7 +721,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         ]
 
     def save_config(self, values: dict, hermes_home: str) -> None:
-        target_dir = Path(hermes_home).expanduser() / "plugins" / "memory" / "hyperspacedb"
+        target_dir = Path(hermes_home).expanduser() / "plugins" / "hyperspacedb"
         target_dir.mkdir(parents=True, exist_ok=True)
         config_path = target_dir / "plugin.yaml"
         current: Dict[str, Any] = {}
