@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout plugin
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Checkout pinned Hermes Agent
         uses: actions/checkout@v4
@@ -27,6 +29,7 @@ jobs:
           repository: NousResearch/hermes-agent
           ref: 56a41715dc3b8bf6f50a740ff9416c4036ef4259
           path: .ci/hermes-agent
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -52,6 +55,8 @@ jobs:
     steps:
       - name: Checkout plugin
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -94,6 +99,8 @@ jobs:
     steps:
       - name: Checkout plugin
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Checkout pinned Hermes Agent
         uses: actions/checkout@v4
@@ -101,6 +108,7 @@ jobs:
           repository: NousResearch/hermes-agent
           ref: 56a41715dc3b8bf6f50a740ff9416c4036ef4259
           path: .ci/hermes-agent
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -140,6 +148,8 @@ jobs:
     steps:
       - name: Checkout plugin
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Checkout pinned Hermes Agent
         uses: actions/checkout@v4
@@ -147,6 +157,7 @@ jobs:
           repository: NousResearch/hermes-agent
           ref: 56a41715dc3b8bf6f50a740ff9416c4036ef4259
           path: .ci/hermes-agent
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -173,6 +184,8 @@ jobs:
     steps:
       - name: Checkout plugin
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Checkout latest Hermes Agent (main canary)
         uses: actions/checkout@v4
@@ -180,6 +193,7 @@ jobs:
           repository: NousResearch/hermes-agent
           ref: main
           path: .ci/hermes-agent
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -231,4 +245,4 @@ jobs:
           gh release create "$TAG_NAME" dist/* \
             --title "$TAG_NAME: Verified Release" \
             --generate-notes \
-            --latest || gh release upload "$TAG_NAME" dist/* --clobber
+            --latest

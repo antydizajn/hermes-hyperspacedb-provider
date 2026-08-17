@@ -7,13 +7,14 @@ bounded memory tools, and keeps a local identity ledger so `add`, `replace`, and
 
 ## Status
 
-Version 2.5.2 resolves packaging hygiene, dependency closure, CI release attestation, and config persistence contracts:
-1. **CI Release Attestation**: Automated GitHub Actions workflow builds, verifies wheel purity, tests cross-matrix dependencies, and directly uploads the exact tested artifacts with `SHA256SUMS.txt` upon tag creation.
-2. **Dependency closure (`cryptography`)**: Declares `cryptography>=41.0.0` as an explicit package dependency to prevent downstream `ModuleNotFoundError` during HyperspaceDB client imports in clean environments.
-3. **Clean wheel distribution**: Configures explicit package boundaries in `pyproject.toml` ensuring the binary wheel contains only production provider code and `plugin.yaml` (excluding `tests/`, `_deferred_events/`, and internal workflow artifacts).
-4. **`save_config()` user path alignment**: Writes updated configuration to the canonical user-plugin path (`$HERMES_HOME/plugins/hyperspacedb/plugin.yaml`).
-5. **Auto-store thread optimization**: Background write worker thread spawns only when `auto_store: true` is configured.
-6. **Domain-driven modularization**: Provider implementation split into 16 decoupled submodules (`_capabilities`, `_config`, `_constants`, `_errors`, `_geometry`, `_graph`, `_ledger`, `_lifecycle`, `_mutations`, `_provider`, `_retrieval`, `_rpc`, `_security`, `_tools`, `_utils`, `__init__`) with 100% backward-compatible root exports.
+Version 2.5.3 hardens CI supply-chain permissions, enforces release asset immutability, and establishes verified artifact continuity:
+1. **Verified CI Artifact Continuity**: Automated GitHub Actions workflow builds, verifies wheel purity, tests cross-matrix dependencies, and directly publishes the exact tested CI artifacts with a `SHA256SUMS.txt` manifest upon tag creation (strictly fail-closed on duplicate release attempts without overwriting/clobbering).
+2. **Least Privilege CI Permissions**: Workflow applies global `contents: read` permissions with `persist-credentials: false` across all test jobs, elevating to `contents: write` exclusively in the dedicated, isolated `release` gate.
+3. **Dependency closure (`cryptography`)**: Declares `cryptography>=41.0.0` as an explicit package dependency to prevent downstream `ModuleNotFoundError` during HyperspaceDB client imports in clean environments.
+4. **Clean wheel distribution**: Configures explicit package boundaries in `pyproject.toml` ensuring the binary wheel contains only production provider code and `plugin.yaml` (excluding `tests/`, `_deferred_events/`, and internal workflow artifacts).
+5. **`save_config()` user path alignment**: Writes updated configuration to the canonical user-plugin path (`$HERMES_HOME/plugins/hyperspacedb/plugin.yaml`).
+6. **Auto-store thread optimization**: Background write worker thread spawns only when `auto_store: true` is configured.
+7. **Domain-driven modularization**: Provider implementation split into 16 decoupled submodules (`_capabilities`, `_config`, `_constants`, `_errors`, `_geometry`, `_graph`, `_ledger`, `_lifecycle`, `_mutations`, `_provider`, `_retrieval`, `_rpc`, `_security`, `_tools`, `_utils`, `__init__`) with 100% backward-compatible root exports.
 
 ## Requirements
 

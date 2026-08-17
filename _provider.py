@@ -1896,6 +1896,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         if handler is None:
             return _json_error("UNKNOWN_TOOL", f"Unknown tool: {tool_name}")
         supplied = dict(args or {})
+        supplied.pop("reason", None)
         unexpected = sorted(set(supplied) - _TOOL_ALLOWED_ARGS[tool_name])
         if unexpected:
             return _json_error("INVALID_ARGUMENT", "Unexpected tool argument(s): " + ", ".join(unexpected))
