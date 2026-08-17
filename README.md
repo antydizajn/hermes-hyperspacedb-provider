@@ -137,6 +137,13 @@ Or install the packaged wheel in your Hermes Agent virtual environment:
 pip install hermes_hyperspacedb_provider-2.5.3-py3-none-any.whl
 ```
 
+### Recommended companion integrations
+
+Always install the upstream companion skills and MCP server alongside this provider for complete memory workflow tooling:
+
+- **[HyperspaceDB Skills](https://github.com/YARlabs/hyperspace-db/tree/main/integrations/hyperspacedb-skills)**: Specialized agent skills for Lorentz geometry diagnostics, concept hierarchy exploration, and memory management procedures.
+- **[HyperspaceDB MCP Server](https://github.com/YARlabs/hyperspace-db/tree/main/integrations/mcp-hyperspacedb)**: Model Context Protocol server providing direct tool inspection, graph traversal, and cognitive analytics across agent runtimes.
+
 ---
 
 ## Configuration
