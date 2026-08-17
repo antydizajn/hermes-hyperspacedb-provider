@@ -8,7 +8,7 @@
 [![Hermes Provider](https://img.shields.io/badge/Hermes-Memory_Provider-111111?style=flat-square)](https://github.com/NousResearch/hermes-agent)
 [![License](https://img.shields.io/badge/license-MIT-black?style=flat-square)](#license)
 [![CI](https://img.shields.io/github/actions/workflow/status/antydizajn/hermes-hyperspacedb-provider/ci.yml?branch=main&style=flat-square&label=CI&color=black)](https://github.com/antydizajn/hermes-hyperspacedb-provider/actions/workflows/ci.yml)
-[![Geometry](https://img.shields.io/badge/geometry-Lorentz_129D-black?style=flat-square)](#architecture)
+[![Geometry](https://img.shields.io/badge/geometry-Lorentz_129D-black?style=flat-square)](#how-it-works)
 [![Security](https://img.shields.io/badge/provenance-HMAC_authenticated-black?style=flat-square)](#provenance-and-trust-boundaries)
 
 A hardened, fail-closed Hermes Agent memory provider backed by HyperspaceDB, ordered SQLite ledger mutations, HMAC provenance gating, and Lorentz 129D hyperbolic retrieval.
@@ -36,7 +36,7 @@ This provider treats memory as an auditable state machine with deterministic loc
 ## What this provider does
 
 - **Fail-closed durability**: memory mutation operations fail closed (`BACKEND_UNAVAILABLE` or error status) if the underlying persistence store cannot guarantee state integrity.
-- **Ordered SQLite ledger**: local write-ahead log serializes all `add`, `replace`, and `remove` mutations, guaranteeing deterministic sequencing and idempotency.
+- **Ordered mutation pipeline**: a single bounded worker serializes mirrored `add`, `replace`, and `remove` operations, while the SQLite ledger persists deterministic identity, mutation state, failures, and reconciliation metadata.
 - **HMAC provenance gating**: records carry cryptographic HMAC signatures to distinguish authenticated agent memories from untrusted external injection payloads.
 - **Lorentz 129D hyperbolic geometry**: validates and operates on native Lorentz hyperboloid embeddings for retrieval and bounded geometric diagnostics.
 - **Strict mutation contracts**: `replace` and `remove` require exact needle matching and fail if target memories are missing or ambiguous.
@@ -93,7 +93,7 @@ The provider registers exactly ten bounded tools divided into primary memory ope
 
 ### Primary memory tools (Channel operations)
 1. **`hyperspace_status`**: inspects backend connectivity, configured collection, metric configuration, and write queue backlog.
-2. **`hyperspace_search`**: runs bounded semantic similarity search with optional metadata filtering and provenance verification.
+2. **`hyperspace_search`**: runs bounded semantic similarity search with provenance verification.
 3. **`hyperspace_store`**: writes durable facts into the configured collection with automatic HMAC provenance tagging.
 
 ### Deep inspection and analytical tools
@@ -178,11 +178,17 @@ Requirements:
 - `cryptography>=41.0.0`
 - A running HyperspaceDB gRPC server instance
 
+### Local vs remote authentication
+
+For a local HyperspaceDB instance with authentication disabled, leave `api_key_env`/`api_key` unset. Do not use a placeholder API key: sending a dummy credential to an unauthenticated local server may return `UNAUTHENTICATED`.
+
+For authenticated remote deployments, configure the real `HYPERSPACE_API_KEY` and, where required, `HYPERSPACE_USER_ID`.
+
 ---
 
 ## Verification & Tests
 
-Run the full local test suite (174 tests):
+Run the default local test suite:
 
 ```bash
 python3 -m pytest tests/ -v
