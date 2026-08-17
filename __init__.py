@@ -19,7 +19,7 @@ os.environ["GRPC_DNS_RESOLVER"] = "native"
 
 from typing import Any
 
-try:
+if __package__:
     from ._config import (
         _hermes_home,
         _is_loopback_endpoint,
@@ -120,7 +120,7 @@ try:
         _record_distance,
         _utc_now,
     )
-except (ImportError, ValueError):
+else:
     from _config import (
         _hermes_home,
         _is_loopback_endpoint,
