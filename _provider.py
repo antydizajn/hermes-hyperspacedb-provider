@@ -50,6 +50,8 @@ if __package__:
         _PREFETCH_OWNED_SOURCES,
         _SCHEMA_VERSION,
         _TOOL_ALLOWED_ARGS,
+        VERIFY_RETRY_ATTEMPTS,
+        VERIFY_RETRY_DELAY_SECONDS,
         HSDB_ADMIN_SCHEMA,
         HSDB_AUDIT_SCHEMA,
         HSDB_BATCH_SCHEMA,
@@ -168,6 +170,8 @@ else:
         _PREFETCH_OWNED_SOURCES,
         _SCHEMA_VERSION,
         _TOOL_ALLOWED_ARGS,
+        VERIFY_RETRY_ATTEMPTS,
+        VERIFY_RETRY_DELAY_SECONDS,
         HSDB_ADMIN_SCHEMA,
         HSDB_AUDIT_SCHEMA,
         HSDB_BATCH_SCHEMA,
@@ -934,11 +938,36 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         )
         if ok is not True:
             raise MutationVerificationError("Insert did not return True")
-        points = self._call("get_points", [record_id], collection=self._collection)
-        if not isinstance(points, list) or not any(
-            self._point_owner_matches(point, digest) for point in points
-        ):
-            raise MutationVerificationError("Read-after-write ownership verification failed")
+        self._verify_readback(record_id, digest, write_timeout)
+
+    def _verify_readback(
+        self,
+        record_id: int,
+        digest: str,
+        write_timeout: float,
+    ) -> None:
+        """Read-after-write ownership verification with bounded retry.
+
+        The SDK's get_points() swallows transient RpcError and returns [],
+        so a single server blip during the immediate post-insert read used
+        to raise MutationVerificationFailed for a write that had actually
+        landed (durability=committed). Retry a bounded number of times
+        before declaring failure; fail-closed semantics are unchanged when
+        the point truly never appears.
+        """
+        last_error: Optional[MutationVerificationError] = None
+        for attempt in range(1, VERIFY_RETRY_ATTEMPTS + 1):
+            points = self._call("get_points", [record_id], collection=self._collection)
+            if isinstance(points, list) and any(
+                self._point_owner_matches(point, digest) for point in points
+            ):
+                return
+            last_error = MutationVerificationError(
+                "Read-after-write ownership verification failed"
+            )
+            if attempt < VERIFY_RETRY_ATTEMPTS:
+                time.sleep(VERIFY_RETRY_DELAY_SECONDS)
+        raise last_error  # type: ignore[misc]
 
     def _store_content_sync(
         self,

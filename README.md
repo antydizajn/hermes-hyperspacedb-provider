@@ -4,7 +4,7 @@
 
 **Make the memory fail closed.**
 
-[![Version](https://img.shields.io/badge/version-2.6.0-black?style=flat-square)](plugin.yaml)
+[![Version](https://img.shields.io/badge/version-2.7.0-black?style=flat-square)](plugin.yaml)
 [![Hermes Provider](https://img.shields.io/badge/Hermes-Memory_Provider-111111?style=flat-square)](https://github.com/NousResearch/hermes-agent)
 [![License](https://img.shields.io/badge/license-MIT-black?style=flat-square)](#license)
 [![CI](https://img.shields.io/github/actions/workflow/status/antydizajn/hermes-hyperspacedb-provider/ci.yml?branch=main&style=flat-square&label=CI&color=black)](https://github.com/antydizajn/hermes-hyperspacedb-provider/actions/workflows/ci.yml)
@@ -134,7 +134,7 @@ rsync -av --exclude '.git' --exclude '__pycache__' --exclude 'dist' /path/to/rep
 Or install the packaged wheel in your Hermes Agent virtual environment:
 
 ```bash
-pip install hermes_hyperspacedb_provider-2.6.0-py3-none-any.whl
+pip install hermes_hyperspacedb_provider-2.7.0-py3-none-any.whl
 ```
 
 ### Recommended companion integrations
@@ -210,11 +210,12 @@ python3 tests/run_test_collection_e2e.py
 
 ## Status
 
-Version 2.6.0 raises the RPC timeout ceiling and restores resilient worker startup after live production E2E testing (2026-08-22) against a large collection under memory pressure:
+Version 2.7.0 adds bounded verify retry after live production E2E testing (2026-08-22) on top of the 2.6.0 hardening:
 
-1. **`rpc_timeout` ceiling raised 60s → 300s**: The previous hard clamp silently truncated configured values above 60 seconds. Live measurement on a large production collection showed server-side vectorize at 16 to 40 seconds plus two `get_points` verification round-trips, so a configured 120s deadline was clamped to an effective 60s and produced spurious `BACKEND_TIMEOUT` / `retry_pending` records. Configure `rpc_timeout: 120.0` (or higher, up to 300s) when your HyperspaceDB instance serves large collections or runs with embedding enabled; the default remains 4.0s.
-2. **Resilient worker startup**: The ordered write worker starts before the health probe (restoring pre-2.4.4 behavior). When the first session initializes while the backend is briefly unreachable, mirrored writes are now serialized into the ledger as explicit `retry_pending` state instead of sitting in-process until a second `initialize()`. The fail-closed invariant is unchanged: no mutation is ever reported successful without backend read-after-write verification.
-3. **Self-heal pin tests**: New regression suite pins that a later `initialize()` retries the health probe and collection-contract verification, so a session recovers automatically once the backend returns; no agent restart required.
+1. **Bounded read-after-write verify retry**: The SDK `get_points()` call swallows transient RPC errors and returns an empty list, so a single server blip during the immediate post-insert read raised `MUTATION_VERIFICATION_FAILED` for writes that had actually landed (durability committed; live-measured at roughly 5% of stores under load). Verification now retries up to 3 attempts with a 0.5 second delay before declaring failure. The happy path stays single-shot and fail-closed semantics are unchanged when a point truly never appears.
+2. **`rpc_timeout` ceiling raised 60s → 300s** (v2.6.0): The previous hard clamp silently truncated configured values above 60 seconds. Live measurement on a large production collection showed server-side vectorize at 16 to 40 seconds plus two `get_points` verification round-trips, so a configured 120s deadline was clamped to an effective 60s and produced spurious `BACKEND_TIMEOUT` / `retry_pending` records. Configure `rpc_timeout: 120.0` (or higher, up to 300s) when your HyperspaceDB instance serves large collections or runs with embedding enabled; the default remains 4.0s.
+3. **Resilient worker startup** (v2.6.0): The ordered write worker starts before the health probe (restoring pre-2.4.4 behavior). When the first session initializes while the backend is briefly unreachable, mirrored writes are now serialized into the ledger as explicit `retry_pending` state instead of sitting in-process until a second `initialize()`. The fail-closed invariant is unchanged: no mutation is ever reported successful without backend read-after-write verification.
+4. **Self-heal pin tests** (v2.6.0): New regression suite pins that a later `initialize()` retries the health probe and collection-contract verification, so a session recovers automatically once the backend returns; no agent restart required.
 
 Version 2.5.3 hardens CI supply-chain permissions, enforces release asset immutability, and establishes verified artifact continuity:
 1. **Verified CI Artifact Continuity**: Automated GitHub Actions workflow builds, verifies wheel purity, tests cross-matrix dependencies, and directly publishes the exact tested CI artifacts with a `SHA256SUMS.txt` manifest upon tag creation (strictly fail-closed on duplicate release attempts without overwriting/clobbering).
@@ -247,7 +248,7 @@ It guarantees fail-closed mutation durability, deterministic local ordering, and
 hermes-hyperspacedb-provider/
 ├── README.md                             # Public contract, architecture, and documentation
 ├── LICENSE                               # MIT License
-├── plugin.yaml                           # Hermes Agent plugin manifest (v2.6.0)
+├── plugin.yaml                           # Hermes Agent plugin manifest (v2.7.0)
 ├── pyproject.toml                        # Build system, dependencies, and wheel boundaries
 ├── __init__.py                           # Public package root and exports
 ├── _capabilities.py                      # Tool capability definitions and schemas

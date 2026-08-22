@@ -257,3 +257,12 @@ _INJECTION_PATTERNS: Tuple[re.Pattern, ...] = tuple(
         r"\bBEGIN\s+(SYSTEM|DEVELOPER)\s+(PROMPT|MESSAGE)\b",
     )
 )
+
+# Bounded read-after-write verify retry (v2.7.0). The SDK get_points() swallows
+# transient RpcError and returns [], so a single server blip during the
+# immediate post-insert read produced MutationVerificationFailed for writes
+# that had actually landed (durability=committed; live-measured ~5% of stores
+# on 2026-08-22 under load). 3 attempts / 0.5s keeps the happy path single-shot
+# while absorbing blips; fail-closed semantics unchanged on true absence.
+VERIFY_RETRY_ATTEMPTS = 3
+VERIFY_RETRY_DELAY_SECONDS = 0.5
