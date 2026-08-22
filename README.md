@@ -4,7 +4,7 @@
 
 **Make the memory fail closed.**
 
-[![Version](https://img.shields.io/badge/version-2.5.3-black?style=flat-square)](plugin.yaml)
+[![Version](https://img.shields.io/badge/version-2.6.0-black?style=flat-square)](plugin.yaml)
 [![Hermes Provider](https://img.shields.io/badge/Hermes-Memory_Provider-111111?style=flat-square)](https://github.com/NousResearch/hermes-agent)
 [![License](https://img.shields.io/badge/license-MIT-black?style=flat-square)](#license)
 [![CI](https://img.shields.io/github/actions/workflow/status/antydizajn/hermes-hyperspacedb-provider/ci.yml?branch=main&style=flat-square&label=CI&color=black)](https://github.com/antydizajn/hermes-hyperspacedb-provider/actions/workflows/ci.yml)
@@ -134,7 +134,7 @@ rsync -av --exclude '.git' --exclude '__pycache__' --exclude 'dist' /path/to/rep
 Or install the packaged wheel in your Hermes Agent virtual environment:
 
 ```bash
-pip install hermes_hyperspacedb_provider-2.5.3-py3-none-any.whl
+pip install hermes_hyperspacedb_provider-2.6.0-py3-none-any.whl
 ```
 
 ### Recommended companion integrations
@@ -166,7 +166,7 @@ memory:
     expected_dimension: 129
     trust_mode: owned_only
     auto_store: true
-    rpc_timeout: 60.0
+    rpc_timeout: 120.0
     api_key_env: HYPERSPACE_API_KEY
     user_id_env: HYPERSPACE_USER_ID
     ownership_hmac_key_env: HYPERSPACE_OWNERSHIP_HMAC_KEY
@@ -210,6 +210,12 @@ python3 tests/run_test_collection_e2e.py
 
 ## Status
 
+Version 2.6.0 raises the RPC timeout ceiling and restores resilient worker startup after live production E2E testing (2026-08-22) against a large collection under memory pressure:
+
+1. **`rpc_timeout` ceiling raised 60s → 300s**: The previous hard clamp silently truncated configured values above 60 seconds. Live measurement on a large production collection showed server-side vectorize at 16 to 40 seconds plus two `get_points` verification round-trips, so a configured 120s deadline was clamped to an effective 60s and produced spurious `BACKEND_TIMEOUT` / `retry_pending` records. Configure `rpc_timeout: 120.0` (or higher, up to 300s) when your HyperspaceDB instance serves large collections or runs with embedding enabled; the default remains 4.0s.
+2. **Resilient worker startup**: The ordered write worker starts before the health probe (restoring pre-2.4.4 behavior). When the first session initializes while the backend is briefly unreachable, mirrored writes are now serialized into the ledger as explicit `retry_pending` state instead of sitting in-process until a second `initialize()`. The fail-closed invariant is unchanged: no mutation is ever reported successful without backend read-after-write verification.
+3. **Self-heal pin tests**: New regression suite pins that a later `initialize()` retries the health probe and collection-contract verification, so a session recovers automatically once the backend returns; no agent restart required.
+
 Version 2.5.3 hardens CI supply-chain permissions, enforces release asset immutability, and establishes verified artifact continuity:
 1. **Verified CI Artifact Continuity**: Automated GitHub Actions workflow builds, verifies wheel purity, tests cross-matrix dependencies, and directly publishes the exact tested CI artifacts with a `SHA256SUMS.txt` manifest upon tag creation (strictly fail-closed on duplicate release attempts without overwriting/clobbering).
 2. **Least Privilege CI Permissions**: Workflow applies global `contents: read` permissions with `persist-credentials: false` across all test jobs, elevating to `contents: write` exclusively in the dedicated, isolated `release` gate.
@@ -241,7 +247,7 @@ It guarantees fail-closed mutation durability, deterministic local ordering, and
 hermes-hyperspacedb-provider/
 ├── README.md                             # Public contract, architecture, and documentation
 ├── LICENSE                               # MIT License
-├── plugin.yaml                           # Hermes Agent plugin manifest (v2.5.3)
+├── plugin.yaml                           # Hermes Agent plugin manifest (v2.6.0)
 ├── pyproject.toml                        # Build system, dependencies, and wheel boundaries
 ├── __init__.py                           # Public package root and exports
 ├── _capabilities.py                      # Tool capability definitions and schemas

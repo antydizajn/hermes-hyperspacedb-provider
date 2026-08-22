@@ -45,6 +45,7 @@ if __package__:
         _DEFAULT_QUEUE_SIZE,
         _DEFAULT_RPC_TIMEOUT,
         _DEFAULT_TOP_K,
+        _MAX_RPC_TIMEOUT,
         _PLUGIN_ID,
         _PREFETCH_OWNED_SOURCES,
         _SCHEMA_VERSION,
@@ -162,6 +163,7 @@ else:
         _DEFAULT_QUEUE_SIZE,
         _DEFAULT_RPC_TIMEOUT,
         _DEFAULT_TOP_K,
+        _MAX_RPC_TIMEOUT,
         _PLUGIN_ID,
         _PREFETCH_OWNED_SOURCES,
         _SCHEMA_VERSION,
@@ -290,7 +292,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             self._config.get("max_search_results"), _DEFAULT_MAX_SEARCH_RESULTS, 1, 100
         )
         self._rpc_timeout = _bounded_float(
-            self._config.get("rpc_timeout"), _DEFAULT_RPC_TIMEOUT, 0.1, 60.0
+            self._config.get("rpc_timeout"), _DEFAULT_RPC_TIMEOUT, 0.1, _MAX_RPC_TIMEOUT
         )
         self._max_content_chars = _bounded_int(
             self._config.get("max_content_chars"), _DEFAULT_MAX_CONTENT, 100, 200_000
@@ -656,6 +658,20 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
         self._validate_config()
         self._ledger = IdentityLedger(self._state_path)
         self._collection_contract_verified = False
+        # Start the ordered write worker BEFORE the health probe (restores the
+        # v2.4.3 behavior). A DEGRADED first session must still be able to
+        # accept mirrored writes: the worker serializes them and records
+        # failures in the ledger as explicit retry_pending state. Failing to
+        # start it here meant writes silently sat in-process until a second
+        # initialize() after backend recovery.
+        if self._auto_store and (self._worker is None or not self._worker.is_alive()):
+            self._stop_event.clear()
+            self._worker = threading.Thread(
+                target=self._write_worker,
+                name="hyperspacedb-write-worker",
+                daemon=True,
+            )
+            self._worker.start()
         try:
             self._probe_health()
             self._require_collection_contract()
@@ -714,6 +730,7 @@ class HyperspaceDBMemoryProvider(MemoryProvider):
             {"key": "metric", "type": "string", "default": "lorentz", "description": "Index metric (lorentz)"},
             {"key": "expected_dimension", "type": "integer", "default": 129, "description": "Expected vector dimension"},
             {"key": "top_k", "type": "integer", "default": _DEFAULT_TOP_K, "description": "Default search top_k"},
+            {"key": "rpc_timeout", "type": "number", "default": _DEFAULT_RPC_TIMEOUT, "description": "Per-RPC deadline seconds (0.1-300; use 120+ for large collections or embedding-enabled servers)"},
             {"key": "max_distance", "type": "number", "required": False, "description": "Distance threshold cutoff"},
             {"key": "state_path", "type": "string", "required": False, "description": "SQLite identity ledger path"},
             {"key": "api_key", "type": "string", "secret": True, "env_var": "HYPERSPACE_API_KEY", "description": "HyperspaceDB API Key"},

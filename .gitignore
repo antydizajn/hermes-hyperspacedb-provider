@@ -14,3 +14,20 @@ build/
 dist/
 *.egg-info/
 .ci/
+
+# Private operational records. Deliberately untracked (public repo must not
+# carry user-specific workflow history); also excluded from plugin archives
+# via .gitattributes export-ignore and the release-integrity test allowlist.
+/PLAN.md
+/PLAN-LUNA.md
+/HANDOFF.md
+/HANDOFF-TERRA-2.md
+/HANDOFF-GROK-20260816.md
+/HANDOFF-FINAL-20260816.md
+/AUDIT.md
+/LUNA-AUDIT-REPORT.md
+/PROMPT_ITERATIONS.md
+/GARFIELD_REVIEW_PROMPT_iter1.md
+/GARFIELD_REVIEW_PROMPT_iter2.md
+/GARFIELD_REVIEW_PROMPT_iter3.md
+/PROMPT_POLISH_iter*.md

@@ -10,6 +10,12 @@ _SCHEMA_VERSION = "2"
 _DEFAULT_HOST = "127.0.0.1:50051"
 _DEFAULT_TOP_K = 5
 _DEFAULT_RPC_TIMEOUT = 4.0
+# Upper bound for a single RPC deadline. Raised from the historical 60.0:
+# live measurement on a large production collection showed server-side
+# vectorize at 16-40s under memory pressure plus two get_points
+# verification round-trips; 60s left no headroom and produced spurious
+# BACKEND_TIMEOUT retry_pending records.
+_MAX_RPC_TIMEOUT = 300.0
 _DEFAULT_QUEUE_SIZE = 256
 _DEFAULT_MAX_CONTENT = 50_000
 _DEFAULT_MAX_QUERY = 5_000

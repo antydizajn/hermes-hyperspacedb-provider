@@ -61,6 +61,19 @@ def test_records_with_status_enforces_profile_scope_isolation(tmp_path):
 
 
 def test_worker_thread_does_not_start_if_collection_contract_fails(plugin, fake_client, tmp_path):
+    """v2.4.4 pinned the worker to start only after contract verification.
+
+    v2.6.0 intentionally REVERSES this: live E2E (2026-08-22) showed that when
+    the first initialize() ran while the backend was briefly unreachable, the
+    worker never started, so mirrored writes sat in-process (invisible to the
+    ledger) until a second initialize(). The ordered write worker itself is
+    fail-closed — it records every failed mutation as explicit retry_pending
+    ledger state and never reports success without remote confirmation — so
+    starting it before the probe is safe and restores v2.4.3 behavior.
+    The invariant that matters is preserved: no write is ever REPORTED
+    successful without backend verification; a degraded backend still cannot
+    produce phantom memories.
+    """
     cfg = {
         "collection": "broken_collection",
         "metric": "lorentz",
@@ -71,8 +84,11 @@ def test_worker_thread_does_not_start_if_collection_contract_fails(plugin, fake_
     p = plugin.HyperspaceDBMemoryProvider(cfg, client_factory=lambda **kwargs: fake_client)
     fake_client.stats_fail = RuntimeError("collection not found")
     p.initialize(session_id="test-session")
-    assert p._worker is None or not p._worker.is_alive()
+    # Worker IS started (serialized writes reach the ledger), but health stays
+    # degraded and nothing is reported successful.
+    assert p._worker is not None and p._worker.is_alive()
     assert p.status_snapshot()["health"] in {"DEGRADED", "CONFIGURATION_ERROR"}
+    p.shutdown()
 
 
 def test_graph_sanitizer_strips_raw_vectors_and_internal_keys(provider):
